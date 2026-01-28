@@ -1,0 +1,5 @@
+PyQt6>=6.6.0
+google-genai
+pynput>=1.8.0
+pyobjc-framework-ApplicationServices>=9.0
+python-dotenv>=1.0.0
