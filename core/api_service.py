@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 from google import genai
 from google.genai import types
@@ -14,49 +13,42 @@ class APIService:
             logging.error("❌ API Key missing!")
             return
 
-        # FORCE REST TRANSPORT (Fixes macOS gRPC lag)
+        # FORCE REST TRANSPORT (macOS gRPC lag fix)
         self.client = genai.Client(
             api_key=self.api_key,
             http_options={'api_version': 'v1beta'}
         )
 
+        # KULLANICI TERCİHİ: SABİT MODEL
+        # Bu model ismi asla değiştirilmeyecek.
         self.model_name = "gemini-3-flash-preview"
         
-        # 2026 STANDARD: JSON SCHEMA DEFINITION
-        self.response_schema = {
-            "type": "OBJECT",
-            "properties": {
-                "translation": {"type": "STRING", "description": "Turkish translation (Academic)."},
-                "terms": {
-                    "type": "ARRAY",
-                    "items": {"type": "STRING"},
-                    "description": "Extracted technical terms."
-                }
-            },
-            "required": ["translation", "terms"]
-        }
-
-        self.sys_instruction = "Translate text to Turkish (Academic). Extract terms."
-        
-        self.generation_config = types.GenerateContentConfig(
+        # HIZLI MOD İÇİN SADE CONFIG (JSON Schema YOK)
+        # Latency'yi düşürmek için modelin sadece metin üretmesini istiyoruz.
+        self.stream_config = types.GenerateContentConfig(
             temperature=0.3,
-            response_mime_type="application/json",
-            response_schema=self.response_schema, # Using Schema instead of Regex
             max_output_tokens=8192,
-            system_instruction=self.sys_instruction
+            system_instruction="Sen akademik bir çevirmensin. Verilen metni doğrudan Türkçe'ye çevir. Açıklama yapma, sadece çeviriyi ver."
         )
 
-    def translate_text(self, text):
-        if not text: return None
+    def translate_text_stream(self, text):
+        """
+        Generator function that yields translation chunks in real-time.
+        """
+        if not text: return
+        
         try:
-            # Generate content (Guaranteed JSON due to Schema)
-            response = self.client.models.generate_content(
+            # Use generate_content_stream explicitly
+            response = self.client.models.generate_content_stream(
                 model=self.model_name,
                 contents=text,
-                config=self.generation_config
+                config=self.stream_config
             )
-            # Safe parsing
-            return json.loads(response.text)
+            
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+                    
         except Exception as e:
-            logging.error(f"❌ API Error: {e}")
-            return {"translation": f"Hata: {str(e)}", "terms": []}
+            logging.error(f"❌ API Stream Error: {e}")
+            yield f" [Hata: {str(e)}]"
