@@ -81,6 +81,7 @@ class TranslationWorker(QThread):
 try:
     handler = ClipboardListener()
     api = APIService()
+    api.warmup() # <--- Connection Warmup
     db = DatabaseManager()
     popup = TranslationPopup()
     
