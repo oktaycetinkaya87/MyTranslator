@@ -90,10 +90,36 @@ except Exception as e:
     logging.error(f"Initialization Failed: {e}")
     sys.exit(1)
 
+import re # <--- Added re import
+
+# ... (Logging config and Worker class remain same until dependency injection) ...
+
 # --- LOGIC ---
+
+def clean_text(text):
+    """
+    PDF VE BOZUK METİN TEMİZLEYİCİ:
+    1. Satır sonundaki tireleri (-) birleştirir.
+    2. Gereksiz satır başlarını (\\n) boşluğa çevirir.
+    3. Fazla boşlukları tek boşluğa indirir.
+    """
+    if not text: return ""
+    
+    # 1. Tire ile ayrılmış kelimeleri birleştir (hyphenation fix)
+    text = re.sub(r'-\s*\n\s*', '', text)
+    
+    # 2. Satır sonlarını boşlukla değiştir (paragrafı koru)
+    text = text.replace('\n', ' ')
+    text = text.replace('\r', ' ')
+    
+    # 3. Çoklu boşlukları tek boşluğa indir
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
 def handle_chunk_received(chunk):
     """Called on every stream packet"""
-    popup.append_text(chunk)  # UPDATED METHOD NAME
+    popup.append_text(chunk)
 
 def handle_stream_finished():
     """Called when stream ends"""
@@ -111,10 +137,14 @@ def handle_trigger():
     logging.info("🎹 Keyboard Trigger Received")
     
     clipboard = QApplication.clipboard()
-    text = clipboard.text()
+    raw_text = clipboard.text()
     
-    if not text or not text.strip():
+    if not raw_text or not raw_text.strip():
         return
+
+    # METNİ TEMİZLE (Fix PDF Hyphenation & Spacing)
+    text = clean_text(raw_text)
+    logging.info(f"🧹 Cleaned Text: {text[:50]}...")
 
     # Reset UI
     if popup.isVisible():
