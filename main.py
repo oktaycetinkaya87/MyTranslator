@@ -1,5 +1,6 @@
 import sys
 import logging
+import time # <--- Added missing import
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -28,24 +29,43 @@ class TranslationWorker(QThread):
         self.text = text
         
     def run(self):
+        start_t = time.time()
         try:
             # 1. Cache Check
-            # Using Cache would require a different flow (return full text immediately).
-            # For "HIZLI MOD" (Fast Mode), user probably wants fresh stream, but cache is faster.
+            logging.info("🔍 [Worker] Checking Database for Smart Match...")
+            db_start = time.time()
+            
             cached = self.db.get_translation(self.text, "Academic")
+            
+            db_end = time.time()
+            logging.info(f"⏱️ [Worker] DB Search took: {(db_end - db_start) * 1000:.2f} ms")
+
             if cached and "translation" in cached:
-                logging.info("⚡️ Cache Hit!")
-                # Simulate stream for cache (or just blast it)
+                logging.info(f"⚡️ Cache Hit! Score: {cached.get('match_score', '100')}")
+                # Simulate stream for cache
                 self.stream_chunk.emit(cached["translation"])
                 self.finished.emit()
                 return
+            
+            logging.info("❌ Cache Miss. Falling back to API...")
 
             # 2. API Stream
+            api_start = time.time()
             full_translation = ""
+            first_chunk_received = False
+            
             for chunk in self.api.translate_text_stream(self.text):
+                if not first_chunk_received:
+                    latency = (time.time() - api_start) * 1000
+                    logging.info(f"🚀 [Worker] First API Chunk received in: {latency:.2f} ms")
+                    first_chunk_received = True
+
                 if chunk:
                     full_translation += chunk
                     self.stream_chunk.emit(chunk)
+            
+            total_time = time.time() - start_t
+            logging.info(f"✅ [Worker] Finished. Total time: {total_time:.2f}s")
             
             # 3. Save to DB (Background)
             if full_translation:
@@ -73,7 +93,7 @@ except Exception as e:
 # --- LOGIC ---
 def handle_chunk_received(chunk):
     """Called on every stream packet"""
-    popup.append_chunk(chunk)
+    popup.append_text(chunk)  # UPDATED METHOD NAME
 
 def handle_stream_finished():
     """Called when stream ends"""
@@ -82,8 +102,6 @@ def handle_stream_finished():
     # Justify Translation (Final Polish)
     cursor = popup.translated_text.textCursor()
     cursor.select(cursor.SelectionType.Document)
-    # Qt.AlignmentFlag.AlignJustify is not directly available via textCursor without block format
-    # But we can try to set alignment on the widget if needed, or leave left-aligned for stream natural feel.
     logging.info("✅ Stream Finished")
 
 def handle_trigger():
@@ -104,8 +122,9 @@ def handle_trigger():
         
     # Start Loading (Show Source Text Immediately)
     popup.move_to_cursor_position()
-    popup.start_loading(source_text=text)
-
+    popup.start_loading() # No args
+    popup.original_text.setText(text) # Manually set source
+    
     # Start Background Worker
     global worker 
     worker = TranslationWorker(api, db, text)

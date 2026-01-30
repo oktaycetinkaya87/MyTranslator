@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QMainWindow, QTextEdit, QVBoxLayout, QWidget, QLabel, QSplitter, QProgressBar, QApplication
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QTextCursor  # <--- EKLENDİ: QTextCursor import edildi
 
 class TranslationPopup(QMainWindow):
     def __init__(self):
@@ -63,17 +63,30 @@ class TranslationPopup(QMainWindow):
         self.progress_bar.hide()
 
     def append_text(self, chunk):
-        current = self.translated_text.toPlainText()
-        self.translated_text.setText(current + chunk)
+        """
+        OPTIMİZE EDİLMİŞ AKIŞ GÖSTERİMİ:
+        Metni 'setText' ile komple değiştirmek yerine, imleci sona taşıyıp 'insertText' yapıyoruz.
+        Bu sayede titreme olmaz ve performans artar.
+        """
         cursor = self.translated_text.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
+        
+        # İmleci en sona taşı
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        
+        # Yeni parçayı ekle
+        cursor.insertText(chunk)
+        
+        # UI'daki imleci güncelle ve görünür yap (Otomatik Scroll)
         self.translated_text.setTextCursor(cursor)
+        self.translated_text.ensureCursorVisible()
 
     def update_content(self, data):
         self.stop_loading()
         if not data:
             self.translated_text.setText("Çeviri hatası.")
             return
+            
+        # Eğer veri Streaming harici bir yolla (örn. Hata mesajı veya toplu güncelleme) geldiyse:
         if "translation" in data:
             self.translated_text.setText(data["translation"])
             source = data.get("source_text", "Kaynak metin yok")
@@ -82,11 +95,12 @@ class TranslationPopup(QMainWindow):
             self.translated_text.setText("Çeviri yapılamadı.")
 
     def move_to_cursor_position(self):
-        # Smart positioning logic moved here
+        # 1. Hide first to detach from current space
+        self.hide()
+        
         mouse_pos = QCursor.pos()
         target_screen = QApplication.screenAt(mouse_pos) or QApplication.primaryScreen()
         
-        # Use winId() to ensure handle exists (Fixing AttributeError: createWinId)
         if not self.windowHandle(): self.winId()
         if self.windowHandle(): self.windowHandle().setScreen(target_screen)
         
@@ -98,8 +112,6 @@ class TranslationPopup(QMainWindow):
         if y + self.height() > geo.bottom(): y = geo.bottom() - self.height() - 20
         
         self.move(x, y)
-        if self.isVisible():
-            self.hide() # Detach before show
         self.show()
         self.raise_()
-        self.activateWindow()
+        # self.activateWindow() # Disabled to prevent Space Switching on macOS

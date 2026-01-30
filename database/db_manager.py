@@ -1,111 +1,108 @@
 import sqlite3
-import datetime
-import threading
-from pathlib import Path
+import json
+import logging
+from datetime import datetime
+import os
 
-DB_NAME = "mytranslator.db"
+# Akıllı Eşleşme Kontrolü
+try:
+    from rapidfuzz import process, fuzz
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    RAPIDFUZZ_AVAILABLE = False
+    logging.warning("⚠️ RapidFuzz bulunamadı. Akıllı eşleşme devre dışı.")
 
 class DatabaseManager:
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls, *args, **kwargs):
-        # Singleton: Ensure only one instance exists
-        if not cls._instance:
-            with cls._lock:
-                if not cls._instance:
-                    cls._instance = super(DatabaseManager, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self, db_path=None):
-        if hasattr(self, '_initialized') and self._initialized:
-            return
-
-        self.db_path = db_path if db_path else DB_NAME
-        # Persistent Connection with thread check disabled for Worker access
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.cursor_lock = threading.Lock()
-        
+    def __init__(self, db_name="mytranslator.db"):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.db_path = os.path.join(base_dir, db_name)
         self.init_db()
-        self._initialized = True
 
-    def __del__(self):
-        if hasattr(self, 'conn') and self.conn:
-            self.conn.close()
+    def connect(self):
+        conn = sqlite3.connect(self.db_path)
+        # PERFORMANS AYARI: WAL Modu (Eşzamanlı okuma/yazma)
+        conn.execute("PRAGMA journal_mode=WAL;") 
+        conn.execute("PRAGMA synchronous=NORMAL;") # Disk yazma güvenliğini koruyarak hızı artırır
+        return conn
 
     def init_db(self):
-        with self.cursor_lock:
-            cursor = self.conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp DATETIME,
-                    original_text TEXT,
-                    translated_text TEXT,
-                    mode TEXT
-                )
-            ''')
-            # Performance Index
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_original_text ON history(original_text)')
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_text TEXT NOT NULL,
+                translation TEXT NOT NULL,
+                style TEXT DEFAULT 'Academic',
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # HIZLI ARAMA İÇİN İNDEKS (Performansın sırrı buradadır)
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_original_text ON history(original_text);')
+        conn.commit()
+        conn.close()
+
+    def add_history(self, original, translation, style="Academic"):
+        if not original or not translation: return
+        conn = self.connect()
+        try:
+            cursor = conn.cursor()
+            # Önce var mı diye bak (Index sayesinde çok hızlı)
+            cursor.execute('SELECT id FROM history WHERE original_text = ? AND style = ?', (original, style))
+            existing = cursor.fetchone()
             
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS dictionary (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    context TEXT,
-                    term TEXT UNIQUE,
-                    definition TEXT
-                )
-            ''')
-            self.conn.commit()
+            if existing:
+                cursor.execute('UPDATE history SET translation = ?, timestamp = CURRENT_TIMESTAMP WHERE id = ?', (translation, existing[0]))
+            else:
+                cursor.execute('INSERT INTO history (original_text, translation, style) VALUES (?, ?, ?)', (original, translation, style))
+            conn.commit()
+            logging.info(f"💾 [DB] Kaydedildi.")
+        except Exception as e:
+            logging.error(f"DB Error: {e}")
+        finally:
+            conn.close()
 
-    def add_history(self, original, translated, mode):
-        with self.cursor_lock:
-            try:
-                self.conn.execute('''
-                    INSERT INTO history (timestamp, original_text, translated_text, mode)
-                    VALUES (?, ?, ?, ?)
-                ''', (datetime.datetime.now(), original, translated, mode))
-                self.conn.commit()
-            except Exception as e:
-                print(f"DB Error (add_history): {e}")
-
-    def get_translation(self, original_text, mode):
-        with self.cursor_lock:
-            cursor = self.conn.execute('''
-                SELECT translated_text 
-                FROM history 
-                WHERE original_text = ? AND mode = ? 
-                ORDER BY timestamp DESC 
-                LIMIT 1
-            ''', (original_text, mode))
+    def get_translation(self, text, style="Academic", threshold=90):
+        if not text: return None
+        conn = self.connect()
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.cursor()
+            # 1. Tam Eşleşme (Index Kullanır - 0ms)
+            cursor.execute('SELECT * FROM history WHERE original_text = ? AND style = ? ORDER BY timestamp DESC LIMIT 1', (text, style))
             row = cursor.fetchone()
             if row:
-                return {"translation": row['translated_text'], "terms": []}
+                logging.info("⚡️ [DB] Tam Eşleşme!")
+                return dict(row)
+
+            # 2. Akıllı Eşleşme (RapidFuzz)
+            if RAPIDFUZZ_AVAILABLE:
+                cursor.execute('SELECT original_text, translation FROM history WHERE style = ?', (style,))
+                all_records = cursor.fetchall()
+                choices = [rec['original_text'] for rec in all_records]
+                
+                if not choices: return None
+
+                match = process.extractOne(text, choices, scorer=fuzz.ratio)
+                if match:
+                    best_match_text, score, index = match
+                    if score >= threshold:
+                        logging.info(f"🧠 [DB] Akıllı Eşleşme (%{score:.1f})")
+                        return {
+                            "original_text": best_match_text,
+                            "translation": all_records[index]['translation'],
+                            "match_score": score,
+                            "match_type": "fuzzy"
+                        }
             return None
-
-    def add_term(self, term, definition, context="General"):
-        with self.cursor_lock:
-            try:
-                self.conn.execute('INSERT INTO dictionary (context, term, definition) VALUES (?, ?, ?)', (context, term, definition))
-                self.conn.commit()
-                return True
-            except sqlite3.IntegrityError:
-                return False 
-            except Exception:
-                return False
-
-    def get_all_terms(self):
-        with self.cursor_lock:
-            cursor = self.conn.execute('SELECT * FROM dictionary ORDER BY term')
-            return [dict(row) for row in cursor.fetchall()]
-
-    def get_history(self, limit=50):
-        with self.cursor_lock:
-            cursor = self.conn.execute('SELECT * FROM history ORDER BY timestamp DESC LIMIT ?', (limit,))
-            return [dict(row) for row in cursor.fetchall()]
-
-    def delete_term(self, term_id):
-        with self.cursor_lock:
-            self.conn.execute('DELETE FROM dictionary WHERE id = ?', (term_id,))
-            self.conn.commit()
+        except Exception as e:
+            logging.error(f"DB Get Error: {e}")
+            return None
+        finally:
+            conn.close()
+            
+    def clear_history(self):
+        conn = self.connect()
+        conn.execute('DELETE FROM history')
+        conn.commit()
+        conn.close()
