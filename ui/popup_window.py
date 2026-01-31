@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QMainWindow, QTextEdit, QVBoxLayout, QWidget, QLabel, QSplitter, QProgressBar, QApplication
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QCursor, QTextCursor  # <--- EKLENDİ: QTextCursor import edildi
+from PyQt6.QtWidgets import QMainWindow, QTextEdit, QVBoxLayout, QWidget, QLabel, QSplitter, QProgressBar, QApplication, QPushButton, QHBoxLayout
+from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtGui import QCursor, QTextCursor, QIcon
 
 class TranslationPopup(QMainWindow):
     def __init__(self):
@@ -24,6 +24,29 @@ class TranslationPopup(QMainWindow):
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(10, 10, 10, 10)
 
+        # --- HEADER (History Button) ---
+        header_layout = QHBoxLayout()
+        header_layout.addStretch()
+        
+        self.history_btn = QPushButton("🕒")
+        self.history_btn.setFixedSize(30, 30)
+        self.history_btn.setToolTip("Geçmiş (Son 100)")
+        self.history_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.history_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent; 
+                border-radius: 15px;
+                font-size: 16px;
+                color: #555;
+                font-family: "Segoe UI Emoji";
+            }
+            QPushButton:hover { background-color: #e0e0e0; }
+        """)
+        self.history_btn.clicked.connect(self.open_history)
+        header_layout.addWidget(self.history_btn)
+        
+        layout.addLayout(header_layout)
+
         # PROGRESS BAR (UX Improvement)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0) # Indeterminate mode
@@ -44,6 +67,24 @@ class TranslationPopup(QMainWindow):
         self.translated_text = QTextEdit()
         self.translated_text.setReadOnly(True)
         self.translated_text.setStyleSheet("border: none; color: #000; font-size: 16px; background: transparent;")
+        
+        # --- COPY BUTTON (Floating) ---
+        self.copy_btn = QPushButton(self.translated_text)
+        self.copy_btn.setIcon(QIcon("assets/copy_icon_transparent.png"))
+        self.copy_btn.setIconSize(QSize(28, 28))
+        self.copy_btn.setFixedSize(40, 40)
+        self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_btn.setToolTip("Çeviriyi Kopyala")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent; 
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: rgba(0,0,0,0.05); }
+        """)
+        self.copy_btn.clicked.connect(self.copy_translation)
+        self.copy_btn.hide() # Hide initially until text available
 
         splitter.addWidget(self.original_text)
         splitter.addWidget(self.translated_text)
@@ -54,13 +95,35 @@ class TranslationPopup(QMainWindow):
         layout.addWidget(splitter)
         layout.addWidget(self.info_label)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Reposition floating button
+        if hasattr(self, 'copy_btn') and hasattr(self, 'translated_text'):
+            # Top Right of translated_text, with some margin
+            # mapFromGlobal logic not needed since parent is translated_text
+            self.copy_btn.move(
+                self.translated_text.width() - self.copy_btn.width() - 5,
+                5
+            )
+
+    def copy_translation(self):
+        text = self.translated_text.toPlainText()
+        if text:
+            QApplication.clipboard().setText(text)
+            self.copy_btn.setToolTip("Kopyalandı! ✅")
+            # Restore tooltip after 1sec
+            QTimer.singleShot(1000, lambda: self.copy_btn.setToolTip("Çeviriyi Kopyala"))
+
     def start_loading(self):
         self.progress_bar.show()
         self.original_text.setText("Veri alınıyor...")
         self.translated_text.clear()
+        self.copy_btn.hide()
 
     def stop_loading(self):
         self.progress_bar.hide()
+        if self.translated_text.toPlainText():
+            self.copy_btn.show() # Show copy btn when text ready
 
     def append_text(self, chunk):
         """
@@ -109,16 +172,23 @@ class TranslationPopup(QMainWindow):
             # B. Finished Signal
             if "finished" in data:
                 self.stop_loading()
+                if self.translated_text.toPlainText():
+                    self.copy_btn.show()
+                    self.copy_btn.raise_()
                 return
 
             # C. Full Translation (Cache/Final)
             if "translation" in data:
                 self.stop_loading()
                 self.translated_text.setText(data["translation"])
+                self.copy_btn.show()
+                self.copy_btn.raise_()
                 
         elif isinstance(data, str):
             self.stop_loading()
             self.translated_text.setText(data)
+            self.copy_btn.show()
+            self.copy_btn.raise_()
 
     def append_chunk(self, chunk):
         """
@@ -162,3 +232,14 @@ class TranslationPopup(QMainWindow):
         self.show()
         self.raise_()
         # self.activateWindow() # Disabled to prevent Space Switching on macOS
+
+    def open_history(self):
+        from ui.history_window import HistoryWindow
+        # Lazy Loading
+        if not hasattr(self, 'history_window') or self.history_window is None:
+            self.history_window = HistoryWindow()
+        
+        self.history_window.load_data()
+        self.history_window.show()
+        self.history_window.raise_()
+        self.history_window.activateWindow()

@@ -106,3 +106,16 @@ class DatabaseManager:
         conn.execute('DELETE FROM history')
         conn.commit()
         conn.close()
+
+    def get_last_history(self, limit=100):
+        conn = self.connect()
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM history ORDER BY timestamp DESC LIMIT ?', (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logging.error(f"DB History Error: {e}")
+            return []
+        finally:
+            conn.close()
