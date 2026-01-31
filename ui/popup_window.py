@@ -81,18 +81,65 @@ class TranslationPopup(QMainWindow):
         self.translated_text.ensureCursorVisible()
 
     def update_content(self, data):
-        self.stop_loading()
-        if not data:
-            self.translated_text.setText("Çeviri hatası.")
+        """
+        Signal Handler:
+        - None -> Start Loading
+        - Dict -> Show Content (Chunk/Full)
+        - Str  -> Error/Message
+        """
+        # 1. Loading
+        if data is None:
+            self.start_loading()
+            if not self.isVisible():
+                self.move_to_cursor_position()
+                self.show()
             return
             
-        # Eğer veri Streaming harici bir yolla (örn. Hata mesajı veya toplu güncelleme) geldiyse:
-        if "translation" in data:
-            self.translated_text.setText(data["translation"])
-            source = data.get("source_text", "Kaynak metin yok")
-            self.original_text.setText(source)
-        else:
-            self.translated_text.setText("Çeviri yapılamadı.")
+        # 2. Content Updates
+        if isinstance(data, dict):
+            # Source Text Update
+            if "source_text" in data:
+                self.original_text.setText(data["source_text"])
+
+            # A. Streaming Chunk (Do NOT stop loading yet)
+            if "chunk" in data:
+                self.append_chunk(data["chunk"])
+                return # Keep progress bar active!
+
+            # B. Finished Signal
+            if "finished" in data:
+                self.stop_loading()
+                return
+
+            # C. Full Translation (Cache/Final)
+            if "translation" in data:
+                self.stop_loading()
+                self.translated_text.setText(data["translation"])
+                
+        elif isinstance(data, str):
+            self.stop_loading()
+            self.translated_text.setText(data)
+
+    def append_chunk(self, chunk):
+        """
+        SMART APPEND (Scrolsuz Ekleme):
+        Kullanıcı en sonu okumuyorsa, ekranı kaydırmadan alta ekle.
+        Böylece kullanıcı üst kısmı okurken altta çeviri devam eder.
+        """
+        scrollbar = self.translated_text.verticalScrollBar()
+        was_at_bottom = (scrollbar.value() == scrollbar.maximum())
+        
+        # Detached Cursor ile ekle (Görünümü etkilemez)
+        cursor = self.translated_text.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(chunk)
+        
+        # Eğer kullanıcı zaten en alttaysa, otomatik kaydır (Opsiyonel)
+        # Kullanıcı "Kaymasın" dediği için bunu kapatıyorum veya kontrollü yapıyorum.
+        # İstenirse: if was_at_bottom: scrollbar.setValue(scrollbar.maximum())
+        # Amaç: Kullanıcı okurken metin zıplamasın.
+        
+        # İPUCU: Progress Bar yukarıda hala dönüyor, bu "Çalışıyor" hissiyatı verir.
 
     def move_to_cursor_position(self):
         # 1. Hide first to detach from current space

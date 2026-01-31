@@ -19,27 +19,27 @@ class APIService:
             http_options={'api_version': 'v1beta'}
         )
 
-        self.model_name = "gemini-2.0-flash" # Veya gemini-1.5-flash
+        self.model_name = "gemini-2.0-flash" 
         
-        # LATENCY OPTİMİZASYONU 1: System Prompt'u Token Tasarrufu İçin Kısalttık
-        # Eski: "Sen akademik bir çevirmensin..." (~20 token)
-        # Yeni: "TR Çeviri. Akademik. Sadece metin." (~6 token) -> Etki aynı, hız daha yüksek.
+        # GÜNCELLENEN KISIM: Daha Sıkı Kurallar
         self.stream_config = types.GenerateContentConfig(
             temperature=0.3,
             max_output_tokens=8192,
-            system_instruction="Translate to Turkish. Academic style. Output only translation."
+            system_instruction=(
+                "You are an expert academic translator. Strictly follow these rules:\n"
+                "1. IF the input is in TURKISH -> Translate to ACADEMIC ENGLISH.\n"
+                "2. IF the input is in ENGLISH or ANY OTHER LANGUAGE -> Translate to ACADEMIC TURKISH.\n"
+                "Output ONLY the translation. Do not add explanations."
+            )
         )
 
     def warmup(self):
         """
-        LATENCY OPTİMİZASYONU 2: Connection Warm-up
         İlk bağlantı maliyetini (SSL Handshake) uygulama açılışında öder.
-        Kullanıcı ilk çevirisini yaparken hat hazır olur.
         """
         def _warmup_task():
             try:
                 logging.info("🔥 API Isınma turu başladı...")
-                # Tek tokenlık boş bir istek
                 self.client.models.generate_content(
                     model=self.model_name,
                     contents="Hi",
@@ -49,7 +49,6 @@ class APIService:
             except Exception as e:
                 logging.warning(f"Isınma hatası (Önemli değil): {e}")
 
-        # Ana akışı bloklamamak için thread içinde çalıştır
         threading.Thread(target=_warmup_task, daemon=True).start()
 
     def translate_text_stream(self, text):
