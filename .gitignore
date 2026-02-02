@@ -4,3 +4,4 @@ __pycache__/
 mytranslator.db
 .DS_Store
 .vscode/
+*.log

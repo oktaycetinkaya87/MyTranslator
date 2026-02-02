@@ -19,7 +19,7 @@ class APIService:
             http_options={'api_version': 'v1beta'}
         )
 
-        self.model_name = "gemini-2.0-flash" 
+        self.model_name = "gemini-3-flash-preview" 
         
         # GÜNCELLENEN KISIM: Daha Sıkı Kurallar
         self.stream_config = types.GenerateContentConfig(
