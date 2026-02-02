@@ -7,6 +7,11 @@ from PyQt6.QtGui import QCursor, QTextCursor, QIcon
 import platform
 import os
 import subprocess
+try:
+    if platform.system() == 'Darwin':
+        from AppKit import NSApplication
+except ImportError:
+    pass
 
 class TranslationPopup(QMainWindow):
     def __init__(self):
@@ -16,7 +21,8 @@ class TranslationPopup(QMainWindow):
             Qt.WindowType.WindowTitleHint | 
             Qt.WindowType.WindowCloseButtonHint | 
             Qt.WindowType.WindowSystemMenuHint |
-            Qt.WindowType.WindowStaysOnTopHint  # <--- BU EKLENDİ (Öne gelme sorunu çözer)
+            Qt.WindowType.WindowSystemMenuHint
+            # Qt.WindowType.WindowStaysOnTopHint  # REMOVED per user request
         )
         self.setWindowTitle("MyTranslator")
         self.resize(500, 480) 
@@ -170,33 +176,38 @@ class TranslationPopup(QMainWindow):
             self.copy_btn.show()
 
     def update_content(self, data):
-        if data is None:
-            self.start_loading()
-            if not self.isVisible():
-                self.move_to_cursor_position()
-                self.show()
-            return
-            
-        if isinstance(data, dict):
-            if "source_text" in data:
-                self.original_text.setText(data["source_text"])
-                self.adjust_input_height()
-
-            if "chunk" in data:
-                self.append_chunk(data["chunk"])
+        try:
+            if data is None:
+                self.start_loading()
+                if not self.isVisible():
+                    self.move_to_cursor_position()
+                    self.show()
                 return
-
-            if "finished" in data:
-                self.stop_loading()
-                return
-
-            if "translation" in data:
-                self.stop_loading()
-                self.translated_text.setText(data["translation"])
                 
-        elif isinstance(data, str):
-            self.stop_loading()
-            self.translated_text.setText(data)
+            if isinstance(data, dict):
+                if "source_text" in data:
+                    self.original_text.setText(data["source_text"])
+                    self.adjust_input_height()
+
+                if "chunk" in data:
+                    self.append_chunk(data["chunk"])
+                    return
+
+                if "finished" in data:
+                    self.stop_loading()
+                    return
+
+                if "translation" in data:
+                    self.stop_loading()
+                    self.translated_text.setText(data["translation"])
+                    
+            elif isinstance(data, str):
+                self.stop_loading()
+                self.translated_text.setText(data)
+        except Exception as e:
+            print(f"Error in update_content: {e}")
+            import traceback
+            traceback.print_exc()
             
     def adjust_input_height(self):
         doc_height = self.original_text.document().size().height()
@@ -207,11 +218,19 @@ class TranslationPopup(QMainWindow):
         self.splitter.setSizes([final_height, total_height - final_height])
 
     def append_chunk(self, chunk):
-        cursor = self.translated_text.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertText(chunk)
+        if not chunk: return
+        try:
+            cursor = self.translated_text.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.insertText(chunk)
+            # Otomatik aşağı kaydır
+            sb = self.translated_text.verticalScrollBar()
+            sb.setValue(sb.maximum())
+        except Exception as e:
+            print(f"Error in append_chunk: {e}")
 
     def move_to_cursor_position(self):
+        # 1. Pencereyi mouse yanına taşı
         self.hide()
         mouse_pos = QCursor.pos()
         target_screen = QApplication.screenAt(mouse_pos) or QApplication.primaryScreen()
@@ -226,31 +245,20 @@ class TranslationPopup(QMainWindow):
         if x + self.width() > geo.right(): x = geo.right() - self.width() - 20
         if y + self.height() > geo.bottom(): y = geo.bottom() - self.height() - 20
         
+        self.move(x, y)
+        self.showNormal()
         try:
-            self.move(x, y)
-            self.showNormal()
             self.raise_()
             self.activateWindow()
-            
-            # MacOS force focus strategy
-            if platform.system() == 'Darwin':
-                try:
-                    # Alternative script strategy
-                    script = '''
-                    tell application "System Events"
-                        set procs to every process whose unix id is {}
-                        if procs is not {} then
-                            set frontmost of item 1 of procs to true
-                        end if
-                    end tell
-                    '''.format(os.getpid(), "{}")
-                    subprocess.run(["osascript", "-e", script], check=False)
-                except Exception as e:
-                    print(f"Window activation error: {e}")
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"Error in move_to_cursor_position: {e}")
+        except: pass
+
+        # 2. HIZLI ODAKLANMA (MacOS Hack)
+        # subprocess/osascript yerine Native API kullanıyoruz (0 Gecikme)
+        if platform.system() == 'Darwin':
+            try:
+                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            except Exception as e:
+                print(f"Focus Error: {e}")
 
     def open_history(self):
         from ui.history_window import HistoryWindow
