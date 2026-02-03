@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 import threading
 from google import genai
 from google.genai import types
@@ -19,37 +20,72 @@ class APIService:
             http_options={'api_version': 'v1beta'}
         )
 
-        self.model_name = "gemini-3-flash-preview" 
+        # ⚡️ GÜNCEL HIZ MOTORU: Gemini 2.5 Flash-Lite
+        # Ultra düşük gecikme (latency) ve yüksek işlem hacmi için optimize edilmiş
+        # en kararlı ve hızlı sürümdür.
+        self.model_name = "gemini-2.5-flash-lite" 
         
-        # GÜNCELLENEN KISIM: Daha Sıkı Kurallar
+        # ⚡️ OPTİMİZASYON: Token Limiti & Sade Prompt
+        # 2.5 Flash-Lite'ın varsayılan limiti çok yüksektir (65k+), ancak
+        # biz anlık hız için 2048 token (yaklaşık 1500 kelime) ile sınırlandırıyoruz.
         self.stream_config = types.GenerateContentConfig(
             temperature=0.3,
-            max_output_tokens=8192,
-            system_instruction=(
-                "You are an expert academic translator. Strictly follow these rules:\n"
-                "1. IF the input is in TURKISH -> Translate to ACADEMIC ENGLISH.\n"
-                "2. IF the input is in ENGLISH or ANY OTHER LANGUAGE -> Translate to ACADEMIC TURKISH.\n"
-                "Output ONLY the translation. Do not add explanations."
-            )
+            max_output_tokens=2048,
+            system_instruction="Translate to Academic Turkish (if input not TR) or Academic English (if TR). No explanations."
         )
+
+        # 🛡️ ÇİFTE KORUMA (Latency Önleyici)
+        # Warmup: İlk açılıştaki SSL el sıkışmasını yapar.
+        # Heartbeat: Bağlantıyı sürekli canlı tutar.
+        self.warmup()
+        self._start_heartbeat()
 
     def warmup(self):
         """
-        İlk bağlantı maliyetini (SSL Handshake) uygulama açılışında öder.
+        WARMUP (Isınma)
+        Uygulama ilk açıldığında Google sunucularına "Selam" vererek
+        SSL/TLS tünelini kazar. İlk işlemin yavaş olmasını engeller.
         """
         def _warmup_task():
             try:
-                logging.info("🔥 API Isınma turu başladı...")
+                logging.info(f"🔥 [Warmup] {self.model_name} motoru ısıtılıyor...")
                 self.client.models.generate_content(
                     model=self.model_name,
                     contents="Hi",
                     config=types.GenerateContentConfig(max_output_tokens=1)
                 )
-                logging.info("✅ API Isındı ve hazır!")
+                logging.info("✅ [Warmup] Motor ısındı ve hazır!")
             except Exception as e:
                 logging.warning(f"Isınma hatası (Önemli değil): {e}")
 
         threading.Thread(target=_warmup_task, daemon=True).start()
+
+    def _start_heartbeat(self):
+        """
+        HEARTBEAT (Kalp Atışı)
+        Siz çalışmasanız bile 45 saniyede bir boş sinyal göndererek
+        Google ile olan hattın 'soğumasını' ve kapanmasını engeller.
+        """
+        def _beat():
+            # Warmup ile çakışmaması için 5 saniye bekle
+            time.sleep(5) 
+            logging.info("💓 [Heartbeat] Servisi devrede.")
+            
+            while True:
+                # 45 saniyede bir (Google genelde 60sn'de hattı keser, biz 45 ile güvenli oynuyoruz)
+                time.sleep(45)
+                try:
+                    # Boş bir ping at (Token maliyeti yok gibidir)
+                    self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=".",
+                        config=types.GenerateContentConfig(max_output_tokens=1)
+                    )
+                    # Logları kirletmemek için pass geçiyoruz, arka planda sessizce çalışır.
+                except Exception:
+                    pass 
+
+        threading.Thread(target=_beat, daemon=True).start()
 
     def translate_text_stream(self, text):
         if not text: return
