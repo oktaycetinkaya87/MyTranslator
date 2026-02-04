@@ -10,7 +10,14 @@ from ui.popup_window import TranslationPopup
 from core.clipboard_handler import ClipboardHandler
 
 # Configure Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(threadName)s] %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s [%(threadName)s] %(message)s',
+    handlers=[
+        logging.FileHandler("debug_humanize.log", mode='w'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # Custom Exception Hook to prevent PyQt from crashing on unhandled errors
 def exception_hook(exctype, value, traceback):
@@ -40,6 +47,9 @@ class MainApp(QObject):
         self.signals.update_signal.connect(self.popup.update_content)
         self.signals.move_signal.connect(self.popup.move_to_cursor_position)
         self.signals.read_clipboard_signal.connect(self.read_system_clipboard)
+        
+        # Connect Humanize Signal from UI
+        self.popup.humanize_requested.connect(self.handle_humanize_request)
 
         # Initialize Logic Controller
         # Pass callback methods that trigger signals
@@ -55,6 +65,13 @@ class MainApp(QObject):
     def emit_move(self):
         """Called from background thread"""
         self.signals.move_signal.emit()
+
+    def handle_humanize_request(self, source_text, current_text):
+        """Called when user clicks Humanize button in UI"""
+        logging.info("✨ Humanize Requested...")
+        # Clear UI for stream
+        self.popup.update_text("") 
+        self.clipboard_handler.process_humanize_request(source_text, current_text)
 
     def emit_clipboard_read_request(self):
         """Called from background thread to request Main Thread clipboard read"""

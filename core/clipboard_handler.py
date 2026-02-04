@@ -147,6 +147,7 @@ class ClipboardHandler:
                 cached = self.db.get_translation(text, "Academic")
                 if cached:
                     self.update_callback(cached)
+                    self.update_callback({"finished": True})
                 return
 
             self.last_text = text
@@ -157,6 +158,7 @@ class ClipboardHandler:
             cached = self.db.get_translation(text, "Academic")
             if cached and "translation" in cached:
                 self.update_callback(cached)
+                self.update_callback({"finished": True})
                 return
 
             full_translation = ""
@@ -175,3 +177,23 @@ class ClipboardHandler:
         except Exception as e:
             logging.error(f"FATAL ERROR in logic: {e}", exc_info=True)
             self.update_callback(f"Kritik Hata: {str(e)}")
+
+    def process_humanize_request(self, source_text, current_text):
+        """Called manually from UI (Humanize button)"""
+        threading.Thread(target=self._humanize_logic, args=(source_text, current_text), daemon=True).start()
+
+    def _humanize_logic(self, source_text, current_text):
+        try:
+            # UI Clean up is handled by Popup immediately to show "Humanizing..."
+            # We just send data stream
+            
+            full_text = ""
+            for chunk in self.api.humanize_text_stream(source_text, current_text):
+                full_text += chunk
+                self.update_callback({"chunk": chunk})
+            
+            self.update_callback({"finished": True}) # Signals popup to maybe re-enable buttons etc.
+
+        except Exception as e:
+            logging.error(f"Humanize Logic Error: {e}")
+            self.update_callback(f"Humanize Error: {str(e)}")

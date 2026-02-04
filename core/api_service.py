@@ -87,6 +87,52 @@ class APIService:
 
         threading.Thread(target=_beat, daemon=True).start()
 
+    # ✨ YENİ FONKSİYON: Humanize
+    def humanize_text_stream(self, source_text, current_text):
+        if not source_text: return
+        
+        HUMANIZE_SYSTEM_PROMPT = """
+You are an expert academic editor. Your task is to rewrite the given text to make it indistinguishable from human writing, specifically to bypass AI detection filters.
+
+Goal: High Perplexity and High Burstiness.
+1.  **Perplexity (Complexity):** Avoid predictable word choices. Use varied vocabulary and slightly more complex sentence structures where appropriate for academia.
+2.  **Burstiness (Sentence Variation):** AI generates sentences of uniform length. You must vary sentence length significantly. Mix short, punchy sentences with longer, complex compound sentences.
+
+Strict Rules:
+-   Preserve the original academic meaning 100%.
+-   Do NOT be too formal/robotic. Use natural transitions (e.g., "Furthermore," "On the other hand," "Crucially").
+-   If the text is in Turkish, write like a native Turkish academic (using proper terminology).
+-   If in English, write like a native English scholar.
+-   Output ONLY the rewritten text.
+"""
+        
+        humanize_config = types.GenerateContentConfig(
+            temperature=0.7, 
+            max_output_tokens=2048,
+            system_instruction=HUMANIZE_SYSTEM_PROMPT
+        )
+
+        user_prompt = f"Source Reference Text:\n{source_text}\n\nCurrent Text:\n{current_text}"
+        
+        # DEBUG LOG
+        logging.critical("\n--- HUMANIZE PROMPT ---")
+        logging.critical(f"Source Len: {len(source_text)}")
+        logging.critical("-----------------------")
+
+        try:
+            response = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=user_prompt,
+                config=humanize_config
+            )
+            for chunk in response:
+                if chunk.text: 
+                    logging.critical(f"DEBUG CHUNK: {chunk.text[:20]}...") # Gelen veriyi gör
+                    yield chunk.text
+        except Exception as e:
+            logging.error(f"❌ Humanize Error: {e}")
+            yield f" [Error: {str(e)}]"
+
     def translate_text_stream(self, text):
         if not text: return
         try:
