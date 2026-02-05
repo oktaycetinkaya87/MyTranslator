@@ -92,17 +92,19 @@ class APIService:
         if not source_text: return
         
         HUMANIZE_SYSTEM_PROMPT = """
-You are an expert academic editor. Your task is to rewrite the given text to make it indistinguishable from human writing, specifically to bypass AI detection filters.
+You are an expert academic editor. Your task is to rewrite the 'Current Text' to make it indistinguishable from human writing, specifically to bypass AI detection filters.
 
 Goal: High Perplexity and High Burstiness.
 1.  **Perplexity (Complexity):** Avoid predictable word choices. Use varied vocabulary and slightly more complex sentence structures where appropriate for academia.
 2.  **Burstiness (Sentence Variation):** AI generates sentences of uniform length. You must vary sentence length significantly. Mix short, punchy sentences with longer, complex compound sentences.
 
 Strict Rules:
+-   **CRITICAL:** OUTPUT MUST BE IN THE SAME LANGUAGE AS THE 'Current Text'.
+-   **NEVER** translate the text back to the 'Source Reference Text' language.
 -   Preserve the original academic meaning 100%.
 -   Do NOT be too formal/robotic. Use natural transitions (e.g., "Furthermore," "On the other hand," "Crucially").
--   If the text is in Turkish, write like a native Turkish academic (using proper terminology).
--   If in English, write like a native English scholar.
+-   If 'Current Text' is Turkish -> Output Turkish.
+-   If 'Current Text' is English -> Output English.
 -   Output ONLY the rewritten text.
 """
         
