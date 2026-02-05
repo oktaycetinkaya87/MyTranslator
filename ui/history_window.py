@@ -179,10 +179,26 @@ class HistoryWindow(QWidget):
                 
         history = self.db.get_last_history()
         
-        for item_data in history:
-            widget = HistoryItemWidget(item_data)
-            # Signal Removed: Widget handles its own copy logic now
-            self.container_layout.addWidget(widget)
+        history = self.db.get_last_history()
+        
+        # ASYNC LOADING (Arayüz donmasını engeller)
+        iterator = iter(history)
+        
+        def load_next_chunk():
+            try:
+                # Her seferinde 5 kayıt ekle (Denge: Hız vs Akıcılık)
+                for _ in range(5):
+                    item_data = next(iterator)
+                    widget = HistoryItemWidget(item_data)
+                    self.container_layout.addWidget(widget)
+                
+                # Devamı için kendini tekrar çağır (0ms gecikme = sonraki event loop'ta)
+                QTimer.singleShot(0, load_next_chunk)
+            except StopIteration:
+                pass # Bitti
+
+        # İlk parçayı başlat
+        load_next_chunk()
 
     # copy_text method removed as it is handled in HistoryItemWidget
 

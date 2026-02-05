@@ -12,8 +12,7 @@ except ImportError:
     RAPIDFUZZ_AVAILABLE = False
     logging.warning("⚠️ RapidFuzz bulunamadı. Akıllı eşleşme devre dışı.")
 
-# GÜVENLİK İÇİN GEÇİCİ OLARAK RAPIDFUZZ DEVRE DIŞI
-RAPIDFUZZ_AVAILABLE = False
+
 
 class DatabaseManager:
     def __init__(self, db_name="mytranslator.db"):

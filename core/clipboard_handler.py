@@ -118,7 +118,7 @@ class ClipboardHandler:
         logging.info("🎹 Kısayol (Cmd+C+C) Algılandı - İşleniyor...")
         
         raw_text = None
-        for i in range(100): # 100 deneme (Hızlı tepki)
+        for i in range(20): # 20 deneme (Maks 0.2sn - Yeterli)
             raw_text = self.get_clipboard_content()
             if raw_text and raw_text.strip():
                 break

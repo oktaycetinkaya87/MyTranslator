@@ -234,7 +234,12 @@ class TranslationPopup(QMainWindow):
                 
             elif isinstance(data, str):
                 self.stop_loading()
-                self.update_text(data)
+                # Hata mesajlarını info_label'a yönlendir, ana metni kirletme
+                if data.startswith("Hata:") or data.startswith("Error:") or "[Error:" in data:
+                    self.info_label.setText(f"⚠️ {data}")
+                    self.info_label.setStyleSheet("color: red; font-size: 11px;")
+                else:
+                    self.update_text(data)
         except Exception as e:
             print(f"Error in update_content: {e}")
             import traceback
