@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QProgressBar, QApplication, QPushButton, QHBoxLayout, QFrame
 )
 from PyQt6.QtCore import Qt, QTimer, QSize, QEvent, pyqtSignal
-from PyQt6.QtGui import QCursor, QTextCursor, QIcon, QFont, QAction
+from PyQt6.QtGui import QCursor, QTextCursor, QIcon, QFont, QAction, QPixmap
 import platform
 import os
 import subprocess
@@ -46,6 +46,22 @@ class TranslationPopup(QMainWindow):
 
         # --- ÜST BAR (Geçmiş) ---
         top_header_layout = QHBoxLayout()
+        
+        # 1. LOGO
+        logo_path = os.path.join(os.getcwd(), "assets", "app_icon.png")
+        if os.path.exists(logo_path):
+            self.logo_label = QLabel()
+            pixmap = QPixmap(logo_path)
+            # --- GÜNCELLEME: Geçmiş butonu (30x30) ile eşitlendi ---
+            self.logo_label.setFixedSize(30, 30) 
+            self.logo_label.setPixmap(pixmap.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            top_header_layout.addWidget(self.logo_label)
+            
+        # 2. BAŞLIK
+        self.title_label = QLabel("MyTranslator")
+        self.title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #333; margin-left: 5px;")
+        top_header_layout.addWidget(self.title_label)
+        
         top_header_layout.addStretch()
         
         self.history_btn = QPushButton("🕒")
@@ -76,8 +92,18 @@ class TranslationPopup(QMainWindow):
 
         # --- SPLITTER ---
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.setHandleWidth(8)
-        self.splitter.setStyleSheet("QSplitter::handle { background-color: #dcdcdc; border-radius: 4px; }")
+        self.splitter.setHandleWidth(12) # İkon için yeterli alan
+        
+        # Splitter Handle Stili (İkonlu)
+        # Handle şeffaf olsun, sadece ortada ikon görünsün
+        self.splitter.setStyleSheet("""
+            QSplitter::handle { 
+                background-color: transparent; 
+                image: url(assets/splitter_handle.png);
+                image-position: center;
+                background-repeat: no-repeat;
+            }
+        """)
 
         # SCROLLBAR STİLİ
         scrollbar_style = """
@@ -92,12 +118,19 @@ class TranslationPopup(QMainWindow):
         self.original_text.setReadOnly(True)
         self.original_text.setPlaceholderText("Kaynak metin...")
         self.original_text.setStyleSheet("""
-            QTextEdit { border: none; color: #555; font-size: 13px; background: transparent; padding: 5px; }
+            QTextEdit { 
+                border: none; 
+                border-bottom: 1px solid #E0E0E0; 
+                color: #444; 
+                font-size: 13px; 
+                background-color: #FCFCFA; /* Warm White */
+                padding: 10px; 
+            }
         """ + scrollbar_style)
         
         # 2. ALT BÖLME (Konteyner)
         bottom_container = QWidget()
-        bottom_container.setStyleSheet("background-color: transparent;") 
+        bottom_container.setStyleSheet("background-color: #FFFFFF;") # Explicit white 
         
         bottom_layout = QVBoxLayout(bottom_container)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -125,7 +158,10 @@ class TranslationPopup(QMainWindow):
                 border: none;
                 border-radius: 4px;
             }
-            QPushButton:hover { background-color: rgba(0,0,0,0.05); }
+            QPushButton:hover { 
+                background-color: #E3F2FD; /* Light Blue */
+                border: 1px solid #BBDEFB;
+            }
         """)
         self.copy_btn.clicked.connect(self.copy_translation)
         self.copy_btn.hide() 
@@ -146,9 +182,10 @@ class TranslationPopup(QMainWindow):
             }
         """ + scrollbar_style)
 
+        # HUMANİZE BUTONU
         self.humanize_btn = QPushButton("✨") 
         self.humanize_btn.setToolTip("Humanize (Daha Doğal Yap)")
-        self.humanize_btn.setFixedSize(30, 30)
+        self.humanize_btn.setFixedSize(32, 32)
         self.humanize_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.humanize_btn.setStyleSheet("""
             QPushButton {
@@ -156,8 +193,13 @@ class TranslationPopup(QMainWindow):
                 border: none;
                 border-radius: 4px;
                 font-size: 18px;
+                color: #555;
             }
-            QPushButton:hover { background-color: rgba(0,0,0,0.05); }
+            QPushButton:hover { 
+                background-color: #FFF8E1; /* Light Gold */
+                color: #D4AF37; /* Metallic Gold */
+                border: 1px solid #FFE082;
+            }
         """)
         self.humanize_btn.clicked.connect(self.on_humanize_click)
         self.humanize_btn.hide() # Başlangıçta gizli
@@ -213,8 +255,9 @@ class TranslationPopup(QMainWindow):
         try:
             if data is None:
                 self.start_loading()
+                # Eğer pencere gizliyse sadece görünür yap, TAŞIMA.
+                # Taşıma işlemini 'move_signal' zaten yapıyor.
                 if not self.isVisible():
-                    self.move_to_cursor_position()
                     self.show()
                 return
                 
@@ -228,13 +271,11 @@ class TranslationPopup(QMainWindow):
                     self.update_text(data["translation"])
                 elif "finished" in data:
                     self.stop_loading()
-                    # Capture the full translation as the AUTHENTIC SOURCE
                     if self.original_translation is None:
                          self.original_translation = self.translated_text.toPlainText()
                 
             elif isinstance(data, str):
                 self.stop_loading()
-                # Hata mesajlarını info_label'a yönlendir, ana metni kirletme
                 if data.startswith("Hata:") or data.startswith("Error:") or "[Error:" in data:
                     self.info_label.setText(f"⚠️ {data}")
                     self.info_label.setStyleSheet("color: red; font-size: 11px;")

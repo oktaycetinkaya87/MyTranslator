@@ -3,7 +3,10 @@ import logging
 import faulthandler
 # faulthandler.enable()
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QLockFile, QDir 
+from PyQt6.QtGui import QIcon 
+import os
+import platform
 
 # Import Classes
 from ui.popup_window import TranslationPopup
@@ -39,6 +42,33 @@ class MainApp(QObject):
         super().__init__()
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
+
+        # --- SINGLE INSTANCE LOCK (QLockFile) ---
+        lock_path = os.path.join(QDir.tempPath(), 'MyTranslator.lock')
+        self.lock_file = QLockFile(lock_path)
+        self.lock_file.setStaleLockTime(0) # Auto-detect stale locks immediately
+
+        if not self.lock_file.tryLock(100):
+             logging.warning("⚠️ Another instance is already running (Locked). Exiting.")
+             sys.exit(0)
+        # ----------------------------
+
+        # --- APP IDENTITY & BACKGROUND MODE ---
+        icon_path = os.path.join(os.getcwd(), 'assets', 'app_icon.png')
+        if os.path.exists(icon_path):
+            self.app.setWindowIcon(QIcon(icon_path))
+        
+        # MacOS: Hide from Dock (Accessory Mode)
+        if platform.system() == 'Darwin':
+            try:
+                from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+                NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+                logging.info("👻 App set to Accessory Mode (Hidden from Dock)")
+            except ImportError:
+                logging.warning("⚠️ AppKit not found. Cannot hide from Dock. (pip install pyobjc-framework-Cocoa)")
+            except Exception as e:
+                logging.error(f"Failed to set activation policy: {e}")
+        # -------------------------------------
         
         self.popup = TranslationPopup()
         self.signals = SignalManager()
@@ -57,6 +87,8 @@ class MainApp(QObject):
             update_callback=self.emit_update,
             move_window_callback=self.emit_move
         )
+
+
 
     def emit_update(self, data):
         """Called from background thread"""

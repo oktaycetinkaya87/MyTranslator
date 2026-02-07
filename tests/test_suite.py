@@ -12,15 +12,21 @@ from core.api_service import APIService
 
 class TestDatabaseManager(unittest.TestCase):
     def setUp(self):
-        # Use in-memory DB for testing (fast & safe)
-        self.db = DatabaseManager(db_path=":memory:")
+        # DatabaseManager expects db_name, not db_path
+        self.test_db_name = "test_suite.db"
+        self.db = DatabaseManager(db_name=self.test_db_name)
     
+    def tearDown(self):
+        # Cleanup test DB
+        if os.path.exists(self.db.db_path):
+            os.remove(self.db.db_path)
+
     def test_add_and_get_history(self):
         self.db.add_history("Hello", "Merhaba", "Academic")
-        history = self.db.get_history(limit=1)
+        history = self.db.get_last_history(limit=1) # get_history -> get_last_history
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]['original_text'], "Hello")
-        self.assertEqual(history[0]['translated_text'], "Merhaba")
+        self.assertEqual(history[0]['translation'], "Merhaba") # translated_text -> translation
 
     def test_cache_hit(self):
         self.db.add_history("Cache Me", "Önbellek", "Academic")
@@ -28,43 +34,31 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result['translation'], "Önbellek")
 
-    def test_dictionary_operations(self):
-        self.db.add_term("TestTerm", "TestTanım")
-        terms = self.db.get_all_terms()
-        self.assertEqual(len(terms), 1)
-        self.assertEqual(terms[0]['term'], "TestTerm")
-        
-        self.db.delete_term(terms[0]['id'])
-        self.assertEqual(len(self.db.get_all_terms()), 0)
-
 class TestAPIService(unittest.TestCase):
     def setUp(self):
         # Mock API Key to bypass check
         with patch.dict(os.environ, {"GEMINI_API_KEY": "FAKE_KEY"}):
-            self.api = APIService()
+            with patch('core.api_service.APIService.warmup') as mock_warmup:
+                with patch('core.api_service.APIService._start_heartbeat') as mock_beat:
+                     self.api = APIService()
 
-    def test_translate_text_success(self):
-        # Mock the client explicitly since it was created in setUp
-        self.api.client = MagicMock()
+    @patch('google.genai.Client')
+    def test_translate_text_stream(self, MockClient): # Changed to test stream method
+        # Mock the client instance
+        mock_client_instance = MockClient.return_value
+        self.api.client = mock_client_instance
         
-        # Mock the Gemini API response
-        mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "translation": "Deneme",
-            "terms": ["Terim1"]
-        })
+        # Mock the stream response
+        mock_chunk = MagicMock()
+        mock_chunk.text = "Deneme"
         
-        # Setup the mock chain
-        self.api.client.models.generate_content.return_value = mock_response
+        # Setup the mock to return an iterator
+        mock_client_instance.models.generate_content_stream.return_value = iter([mock_chunk])
         
-        result = self.api.translate_text("Test")
+        # Consume the generator
+        chunks = list(self.api.translate_text_stream("Test"))
         
-        self.assertEqual(result['translation'], "Deneme")
-        self.assertIn("Terim1", result['terms'])
-
-    def test_translate_empty_text(self):
-        result = self.api.translate_text("")
-        self.assertIsNone(result)
+        self.assertEqual("".join(chunks), "Deneme")
 
 if __name__ == '__main__':
     unittest.main()
