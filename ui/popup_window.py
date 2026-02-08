@@ -59,7 +59,8 @@ class TranslationPopup(QMainWindow):
             
         # 2. BAŞLIK
         self.title_label = QLabel("MyTranslator")
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #333; margin-left: 5px;")
+        self.title_label.setFont(QFont("Futura", 16)) # Futura Fontu
+        self.title_label.setStyleSheet("color: #333; margin-left: 5px;") 
         top_header_layout.addWidget(self.title_label)
         
         top_header_layout.addStretch()
@@ -94,8 +95,7 @@ class TranslationPopup(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.setHandleWidth(12) # İkon için yeterli alan
         
-        # Splitter Handle Stili (İkonlu)
-        # Handle şeffaf olsun, sadece ortada ikon görünsün
+        # Splitter Handle Stili (İkonlu - Geri Döndü)
         self.splitter.setStyleSheet("""
             QSplitter::handle { 
                 background-color: transparent; 
@@ -130,7 +130,7 @@ class TranslationPopup(QMainWindow):
         
         # 2. ALT BÖLME (Konteyner)
         bottom_container = QWidget()
-        bottom_container.setStyleSheet("background-color: #FFFFFF;") # Explicit white 
+        bottom_container.setStyleSheet("background-color: #FFFFFF;") 
         
         bottom_layout = QVBoxLayout(bottom_container)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -165,7 +165,7 @@ class TranslationPopup(QMainWindow):
         """)
         self.copy_btn.clicked.connect(self.copy_translation)
         self.copy_btn.hide() 
-
+        
         header_row_layout.addWidget(self.copy_btn)
         
         # --- ÇEVİRİ ALANI ---
