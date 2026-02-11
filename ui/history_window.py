@@ -128,8 +128,10 @@ class HistoryWindow(QWidget):
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setStyleSheet("""
             QScrollArea { background: transparent; }
-            QScrollBar:vertical { width: 8px; background: #f1f1f1; }
+            QScrollBar:vertical { width: 8px; background: #f1f1f1; border-radius: 4px; }
             QScrollBar::handle:vertical { background: #c1c1c1; border-radius: 4px; }
+            QScrollBar::handle:vertical:hover { background: #a8a8a8; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """)
         
         # Container Widget inside Scroll Area

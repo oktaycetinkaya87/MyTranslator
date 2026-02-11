@@ -51,7 +51,7 @@ class TranslationPopup(QMainWindow):
         # --- ÜST BAR (Geçmiş) ---
         top_header_layout = QHBoxLayout()
         
-        # 1. LOGO (BÜYÜK)
+        # 1. LOGO (BÜYÜK) - HIGH DPI DESTEKLİ
         # logobuyuk.png dosyasını kullan, yoksa eskisine düş
         logo_path = os.path.join(os.getcwd(), "assets", "logobuyuk.png")
         if not os.path.exists(logo_path):
@@ -59,16 +59,25 @@ class TranslationPopup(QMainWindow):
 
         if os.path.exists(logo_path):
             self.logo_label = QLabel()
+            
+            # ⭐ HIGH DPI DESTEĞI
+            dpr = QApplication.instance().devicePixelRatio()  # Ekran çözünürlük oranı (Retina için 2.0)
+            target_height = 50
+            
+            # Yüksek çözünürlük için daha büyük pixmap yükle
             pixmap = QPixmap(logo_path)
             
-            # Yükseklik kısıtlaması (Header bozulmasın ama büyük olsun)
-            # Butonlar 30px, Logo 50px olsun
-            target_height = 50 
-            scaled_pixmap = pixmap.scaledToHeight(target_height, Qt.TransformationMode.SmoothTransformation)
+            # Ölçeklendirmeyi DPR ile yap
+            scaled_pixmap = pixmap.scaledToHeight(
+                int(target_height * dpr),  # Retina için 2x boyut
+                Qt.TransformationMode.SmoothTransformation
+            )
+            
+            # DPR'yi pixmap'e bildir (bu kritik!)
+            scaled_pixmap.setDevicePixelRatio(dpr)
             
             self.logo_label.setPixmap(scaled_pixmap)
             self.logo_label.setFixedHeight(target_height)
-            # Genişlik otomatik ayarlanır (AspectRatio korundu)
             
             # Sol boşlukları sıfırla ki sola yaslansın
             self.logo_label.setStyleSheet("padding: 0px; margin: 0px; border: none;")
