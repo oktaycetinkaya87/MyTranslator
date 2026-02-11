@@ -14,6 +14,7 @@ except ImportError:
 
 from core.api_service import APIService
 from database.db_manager import DatabaseManager
+from core.usage_tracker import UsageTracker
 
 RE_HYPHEN = re.compile(r'-\s*\n\s*')
 RE_NEWLINES = re.compile(r'[\n\r]+')
@@ -30,6 +31,9 @@ class ClipboardHandler(QObject):
         
         self.api = APIService()
         self.db = DatabaseManager()
+        
+        # ⭐ YENİ: Kullanım takipçisi
+        self.usage_tracker = UsageTracker(limit=100)
         
         self._running = False
         
@@ -184,6 +188,11 @@ class ClipboardHandler(QObject):
 
     def _process_text_logic(self, raw_text):
         try:
+            # ⭐ LİMİT KONTROLÜ
+            if self.usage_tracker.check_limit_reached():
+                self.update_callback(f"❌ Çeviri limitine ulaştınız! (0/{self.usage_tracker.limit} kaldı)")
+                return
+
             text = RE_SPACES.sub(' ', RE_NEWLINES.sub(' ', RE_HYPHEN.sub('', raw_text))).strip()
             self.move_window_callback()
             self.update_callback(None)
@@ -193,6 +202,8 @@ class ClipboardHandler(QObject):
             if cached:
                 self.update_callback(cached)
                 self.update_callback({"finished": True})
+                # Cache'den de gelse sayıyoruz (Tercihe bağlı, ama genelde sayılır)
+                self.usage_tracker.increment()
                 return
 
             full = ""
@@ -201,6 +212,10 @@ class ClipboardHandler(QObject):
                 self.update_callback({"chunk": chunk})
             self.update_callback({"finished": True})
             self.db.add_history(text, full)
+            
+            # Başarılı çeviri sonrası artır
+            self.usage_tracker.increment()
+            
         except Exception as e:
             self.update_callback(f"Error: {e}")
 
@@ -209,6 +224,11 @@ class ClipboardHandler(QObject):
 
     def _process_image_logic(self, image_bytes):
         try:
+            # ⭐ LİMİT KONTROLÜ
+            if self.usage_tracker.check_limit_reached():
+                self.update_callback(f"❌ Çeviri limitine ulaştınız! (0/{self.usage_tracker.limit} kaldı)")
+                return
+
             self.update_callback(None)
             self.update_callback({"source_text": "[Görsel İşleniyor...]"})
             # Stream Buffer Logic
@@ -243,6 +263,9 @@ class ClipboardHandler(QObject):
                  if cleaned:
                      self.update_callback({"source_text": cleaned}) # Sadece source varmış gibi davran
             self.update_callback({"finished": True})
+            
+            # ⭐ Başarılı görsel çeviri sonrası artır
+            self.usage_tracker.increment()
         except Exception as e:
             self.update_callback(f"Image Error: {e}")
 

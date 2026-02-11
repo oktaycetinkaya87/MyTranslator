@@ -29,6 +29,90 @@ class SettingsWindow(QWidget):
         layout.setContentsMargins(25, 25, 25, 25)
         layout.setSpacing(15)
         
+        # --- KALAN KULLANIM HAKKI KARTI ---
+        # --- KALAN KULLANIM HAKKI KARTI (COMPACT) ---
+        usage_card = QWidget()
+        usage_card.setStyleSheet("""
+            QWidget {
+                background-color: #F8F9FA;
+                border: 1px solid #E9ECEF;
+                border-radius: 8px;
+            }
+        """)
+        
+        # Yatay Düzen (Daha az yer kaplar)
+        usage_layout = QHBoxLayout(usage_card)
+        usage_layout.setContentsMargins(12, 8, 12, 8)
+        usage_layout.setSpacing(10)
+        
+        # Kullanım bilgisini al
+        if self.clipboard_handler and hasattr(self.clipboard_handler, 'usage_tracker'):
+            tracker = self.clipboard_handler.usage_tracker
+            remaining = tracker.get_remaining()
+            
+            if remaining == -1:  # Limitsiz
+                # Icon
+                icon_lbl = QLabel("💎")
+                icon_lbl.setFont(QFont("Segoe UI Emoji", 14))
+                icon_lbl.setStyleSheet("border: none; background: transparent;")
+                
+                # Text Container
+                text_layout = QVBoxLayout()
+                text_layout.setSpacing(0)
+                text_layout.setContentsMargins(0, 0, 0, 0)
+                
+                title = QLabel("Limitsiz Erişim")
+                title.setFont(QFont("Futura", 13, QFont.Weight.Bold))
+                title.setStyleSheet("color: #2E7D32; border: none; background: transparent;")
+                
+                desc = QLabel("Hesabınızda sınır yok")
+                desc.setFont(QFont("System", 11))
+                desc.setStyleSheet("color: #666; border: none; background: transparent;")
+                
+                text_layout.addWidget(title)
+                text_layout.addWidget(desc)
+                
+                usage_layout.addWidget(icon_lbl)
+                usage_layout.addLayout(text_layout)
+                usage_layout.addStretch()
+                
+            else:  # Limited
+                # Icon
+                icon_lbl = QLabel("📊")
+                icon_lbl.setFont(QFont("Segoe UI Emoji", 14))
+                icon_lbl.setStyleSheet("border: none; background: transparent;")
+                
+                # Text Container
+                text_layout = QVBoxLayout()
+                text_layout.setSpacing(2)
+                text_layout.setContentsMargins(0, 0, 0, 0)
+                
+                title = QLabel("Kalan Hakkınız")
+                title.setFont(QFont("Futura", 12, QFont.Weight.Bold))
+                title.setStyleSheet("color: #333; border: none; background: transparent;")
+                
+                # Progress Bar benzeri text
+                limit_text = QLabel(f"{remaining} / {tracker.limit} Çeviri")
+                limit_text.setFont(QFont("System", 11))
+                if remaining < 10:
+                     limit_text.setStyleSheet("color: #D32F2F; border: none; background: transparent; font-weight: bold;")
+                else:
+                     limit_text.setStyleSheet("color: #666; border: none; background: transparent;")
+
+                text_layout.addWidget(title)
+                text_layout.addWidget(limit_text)
+                
+                usage_layout.addWidget(icon_lbl)
+                usage_layout.addLayout(text_layout)
+                usage_layout.addStretch()
+        else:
+            usage_title = QLabel("⚠️ Bilgi Yok")
+            usage_title.setStyleSheet("color: #999; font-size: 12px; border: none;")
+            usage_layout.addWidget(usage_title)
+        
+        layout.addWidget(usage_card)
+        layout.addSpacing(10)
+        
         # --- TITLE "Titretme (Shake) Hassasiyeti" ---
         title_box = QHBoxLayout()
         
