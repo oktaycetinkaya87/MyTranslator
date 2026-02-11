@@ -13,9 +13,13 @@ try:
 except ImportError:
     pass
 
+from ui.snip_tool import SnippingTool
+
 class TranslationPopup(QMainWindow):
     # Yeni Signal: Rephrase/Humanize isteği için (source_text, current_text) gönderir
-    humanize_requested = pyqtSignal(str, str) 
+    humanize_requested = pyqtSignal(str, str)
+    settings_requested = pyqtSignal()
+    image_captured = pyqtSignal(bytes) # Yeni Sinyal 
 
     def __init__(self):
         super().__init__()
@@ -47,24 +51,50 @@ class TranslationPopup(QMainWindow):
         # --- ÜST BAR (Geçmiş) ---
         top_header_layout = QHBoxLayout()
         
-        # 1. LOGO
-        logo_path = os.path.join(os.getcwd(), "assets", "app_icon.png")
+        # 1. LOGO (BÜYÜK)
+        # logobuyuk.png dosyasını kullan, yoksa eskisine düş
+        logo_path = os.path.join(os.getcwd(), "assets", "logobuyuk.png")
+        if not os.path.exists(logo_path):
+            logo_path = os.path.join(os.getcwd(), "assets", "app_icon.png")
+
         if os.path.exists(logo_path):
             self.logo_label = QLabel()
             pixmap = QPixmap(logo_path)
-            # --- GÜNCELLEME: Geçmiş butonu (30x30) ile eşitlendi ---
-            self.logo_label.setFixedSize(30, 30) 
-            self.logo_label.setPixmap(pixmap.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            
+            # Yükseklik kısıtlaması (Header bozulmasın ama büyük olsun)
+            # Butonlar 30px, Logo 50px olsun
+            target_height = 50 
+            scaled_pixmap = pixmap.scaledToHeight(target_height, Qt.TransformationMode.SmoothTransformation)
+            
+            self.logo_label.setPixmap(scaled_pixmap)
+            self.logo_label.setFixedHeight(target_height)
+            # Genişlik otomatik ayarlanır (AspectRatio korundu)
+            
+            # Sol boşlukları sıfırla ki sola yaslansın
+            self.logo_label.setStyleSheet("padding: 0px; margin: 0px; border: none;")
             top_header_layout.addWidget(self.logo_label)
             
-        # 2. BAŞLIK
-        self.title_label = QLabel("MyTranslator")
-        self.title_label.setFont(QFont("Futura", 16)) # Futura Fontu
-        self.title_label.setStyleSheet("color: #333; margin-left: 5px;") 
-        top_header_layout.addWidget(self.title_label)
+        # 2. BAŞLIK (KALDIRILDI)
+        # self.title_label = QLabel("MyTranslator") ...
         
         top_header_layout.addStretch()
         
+        self.settings_btn = QPushButton("⚙️")
+        self.settings_btn.setFixedSize(30, 30)
+        self.settings_btn.setToolTip("Ayarlar")
+        self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent; 
+                border-radius: 15px;
+                font-size: 16px;
+                color: #555;
+            }
+            QPushButton:hover { background-color: #e0e0e0; }
+        """)
+        self.settings_btn.clicked.connect(self.settings_requested.emit)
+        top_header_layout.addWidget(self.settings_btn)
+
         self.history_btn = QPushButton("🕒")
         self.history_btn.setFixedSize(30, 30)
         self.history_btn.setToolTip("Geçmiş (Son 100)")
@@ -262,6 +292,9 @@ class TranslationPopup(QMainWindow):
                 return
                 
             if isinstance(data, dict):
+                if "clear_translation" in data and data["clear_translation"]:
+                    self.translated_text.clear()
+
                 if "source_text" in data:
                     self.original_text.setText(data["source_text"])
                     self.adjust_input_height()
@@ -327,7 +360,14 @@ class TranslationPopup(QMainWindow):
         final_height = max(60, min(target_height, max_allowed_height))
         self.splitter.setSizes([final_height, total_height - final_height])
 
-    def move_to_cursor_position(self):
+    def start_snipping(self):
+        # SnippingTool instance'ı yoksa oluştur
+        if not hasattr(self, 'snip_tool'):
+            self.snip_tool = SnippingTool()
+            self.snip_tool.snippet_taken.connect(self.image_captured.emit)
+        self.snip_tool.start()
+
+    def show_at_cursor(self):
         # 1. Pencereyi mouse yanına taşı
         self.hide()
         mouse_pos = QCursor.pos()

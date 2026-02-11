@@ -3,197 +3,258 @@ import threading
 import logging
 import re
 import platform
-import subprocess
-from pynput import keyboard
+from pynput import keyboard, mouse 
 
-# --- IMPORT GÜNCELLEMESİ: MacOS için Güvenli Pano Erişimi ---
+# MacOS için Pano
 try:
     if platform.system() == 'Darwin':
         from AppKit import NSPasteboard, NSStringPboardType
 except ImportError:
-    logging.warning("⚠️ AppKit not found. Clipboard features may fail. (pip install pyobjc)")
+    pass
 
 from core.api_service import APIService
 from database.db_manager import DatabaseManager
 
-# --- COMPILED REGEX ---
 RE_HYPHEN = re.compile(r'-\s*\n\s*')
 RE_NEWLINES = re.compile(r'[\n\r]+')
 RE_SPACES = re.compile(r'\s+')
 
-class ClipboardHandler:
-    def __init__(self, update_callback, move_window_callback):
+from PyQt6.QtCore import QObject, pyqtSlot
+
+class ClipboardHandler(QObject):
+    def __init__(self, update_callback, move_window_callback, trigger_snip_callback):
+        super().__init__()
         self.update_callback = update_callback
         self.move_window_callback = move_window_callback
+        self.trigger_snip_callback = trigger_snip_callback 
         
-        # Services
         self.api = APIService()
-        self.api.warmup() 
         self.db = DatabaseManager()
         
-        # State
-        self.last_text = ""
+        self._running = False
+        
+        # Klavye
         self.last_c_press_time = 0
         self.c_press_count = 0
-        self._running = False
-        self.listener = None
+        self.cmd_pressed = False
+        
+        # --- SHAKE AYARLARI ---
+        self.left_mouse_pressed = False # 🖱️ Tetikleyici
+        self.shake_count = 0
+        self.last_x = 0
+        self.accumulated_distance = 0
+        self.current_direction = 0 
+        self.shake_reset_time = 0
+        
+        # Kayıtlı hassasiyeti yükle
+        try:
+            saved = self.db.get_setting("shake_sensitivity", "5")
+            self.set_sensitivity(int(saved))
+        except:
+            self.set_sensitivity(5)
+
+    def set_sensitivity(self, level):
+        """Level 1 (Zor) - Level 10 (Çok Hassas)"""
+        self.sensitivity_level = level
+        # Hassaslaştıkça mesafe kısalır (daha küçük hareket yeterli olur)
+        self.min_shake_dist = 150 - (level * 12) 
+        
+        # Git-Gel sayısı
+        if level >= 8: self.required_shakes = 2 
+        elif level <= 3: self.required_shakes = 5 
+        else: self.required_shakes = 3 
+        
+        logging.info(f"🎚️ Hassasiyet: {level} (Mesafe: {self.min_shake_dist}px)")
 
     def start(self):
         if self._running: return
         self._running = True
-        threading.Thread(target=self._run_listener, daemon=True).start()
-        logging.info("🎧 Clipboard Handler Started (Cmd+C+C Listening...)")
+        threading.Thread(target=self._run_keyboard_listener, daemon=True).start()
+        threading.Thread(target=self._run_mouse_listener, daemon=True).start()
+        logging.info("🎧 Handler Başladı (Safe Shake Aktif)")
 
-    def stop(self):
-        self._running = False
-        if self.listener:
-            self.listener.stop()
+    # --- MOUSE DİNLEYİCİSİ ---
+    def _run_mouse_listener(self):
+        try:
+            with mouse.Listener(on_move=self.on_move, on_click=self.on_click) as listener:
+                listener.join()
+        except Exception as e:
+            logging.error(f"⚠️ Mouse Listener Başlatılamadı: {e}")
 
-    def _run_listener(self):
-        with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as self.listener:
-            self.listener.join()
+    def on_click(self, x, y, button, pressed):
+        if button == mouse.Button.left:
+            self.left_mouse_pressed = pressed
+            
+        # Tıklama durumu değiştiğinde sayacı sıfırla
+        self.shake_count = 0
+        self.accumulated_distance = 0
+        self.current_direction = 0
+
+    def on_move(self, x, y):
+        # 🖱️ 1. TETİKLEYİCİ KONTROLÜ: Sol Tık Basılı mı?
+        # Sadece Sol Tık yeterli (Alt tuşuna gerek yok)
+        if not self.left_mouse_pressed:
+            return
+
+        current_time = time.time()
+        
+        # 0.5 saniye hareketsiz kalırsan her şeyi sıfırla
+        if current_time - self.shake_reset_time > 0.5:
+            self.shake_count = 0
+            self.accumulated_distance = 0
+            self.current_direction = 0  
+            self.shake_reset_time = current_time
+            self.last_x = x
+            return
+
+        diff_x = x - self.last_x
+        self.last_x = x 
+        self.shake_reset_time = current_time 
+        
+        if abs(diff_x) < 2: return 
+        
+        # Hareketin Yönü (1: Sağ, -1: Sol)
+        new_direction = 1 if diff_x > 0 else -1
+        
+        # --- ANA MANTIK ---
+        if new_direction == self.current_direction:
+            self.accumulated_distance += abs(diff_x)
+        else:
+            if self.accumulated_distance >= self.min_shake_dist:
+                self.shake_count += 1
+                logging.debug(f"Yön Değişimi! Shake: {self.shake_count} (Mesafe: {self.accumulated_distance}px)")
+                
+                if self.shake_count >= self.required_shakes:
+                    logging.info("👋 Shake Algılandı! (Click + Shake)")
+                    self.shake_count = 0
+                    self.accumulated_distance = 0
+                    self.current_direction = 0
+                    self.trigger_snip_callback()
+                    return
+
+            self.accumulated_distance = abs(diff_x)
+            self.current_direction = new_direction
+
+    # --- KLAVYE DİNLEYİCİSİ ---
+    def _run_keyboard_listener(self):
+        try:
+            with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
+                listener.join()
+        except Exception as e:
+            logging.error(f"⚠️ Keyboard Listener Başlatılamadı (Kısayollar Devre Dışı): {e}")
 
     def on_press(self, key):
-        if not self._running: return False
         try:
             if key == keyboard.Key.cmd:
-                pass 
+                self.cmd_pressed = True
             elif hasattr(key, 'char') and key.char == 'c':
-                current_time = time.time()
-                if current_time - self.last_c_press_time < 0.5:
-                    self.c_press_count += 1
-                else:
-                    self.c_press_count = 1
-                
-                self.last_c_press_time = current_time
+                if self.cmd_pressed:
+                    current_time = time.time()
+                    if current_time - self.last_c_press_time < 0.5:
+                        self.c_press_count += 1
+                    else:
+                        self.c_press_count = 1
+                    self.last_c_press_time = current_time
 
-                if self.c_press_count == 2:
-                    self.c_press_count = 0
-                    threading.Thread(target=self.on_activate, daemon=True).start()
-        except AttributeError:
-            self.c_press_count = 0
+                    if self.c_press_count == 2:
+                        self.c_press_count = 0
+                        threading.Thread(target=self.on_activate_text, daemon=True).start()
+        except AttributeError: pass
 
     def on_release(self, key):
         if key == keyboard.Key.cmd:
+            self.cmd_pressed = False
             self.c_press_count = 0
 
-    def get_clipboard_content(self):
-        """
-        GÜVENLİ VE HIZLI YÖNTEM
-        Eski 'subprocess' (pbpaste) yöntemi MacOS'ta thread çakışması yapıp çökertiyordu.
-        AppKit kullanımı bunu %100 çözer ve 10 kat daha hızlıdır.
-        """
+    # --- İŞLEME MANTIĞI ---
+    def on_activate_text(self):
+        time.sleep(0.1)
+        raw_text = self.get_clipboard_text()
+        if raw_text: self.process_clipboard_content(raw_text)
+
+    def get_clipboard_text(self):
         try:
             if platform.system() == 'Darwin':
                 pb = NSPasteboard.generalPasteboard()
-                content = pb.stringForType_(NSStringPboardType)
-                return content if content else ""
-            else:
-                # Windows/Linux Fallback
-                import subprocess
-                result = subprocess.run(
-                    ['pbpaste', '-pboard', 'general'], 
-                    capture_output=True, text=True, 
-                    env={'LC_CTYPE': 'UTF-8'}
-                )
-                return result.stdout
-        except Exception as e:
-            logging.error(f"Clipboard Read Error: {e}")
-            return None
-
-    def clean_text(self, text):
-        if not text: return ""
-        text = RE_HYPHEN.sub('', text)
-        text = RE_NEWLINES.sub(' ', text)
-        text = RE_SPACES.sub(' ', text)
-        return text.strip()
-
-    def on_activate(self):
-        """
-        LATENCY OPTİMİZASYONU:
-        Eskiden 1 saniyede 10 kere kontrol ediyordu (0.1s gecikme riski).
-        Şimdi 1 saniyede 100 kere kontrol ediyor (0.01s gecikme riski).
-        Çok daha seri hissettirir.
-        """
-        logging.info("🎹 Kısayol (Cmd+C+C) Algılandı - İşleniyor...")
-        
-        raw_text = None
-        for i in range(20): # 20 deneme (Maks 0.2sn - Yeterli)
-            raw_text = self.get_clipboard_content()
-            if raw_text and raw_text.strip():
-                break
-            time.sleep(0.01) # 10ms bekleme
-
-        if not raw_text or not raw_text.strip():
-            logging.warning("⚠️ Pano boş veya okunamadı.")
-            return
-
-        self._process_logic(raw_text)
+                return pb.stringForType_(NSStringPboardType)
+        except: return None
 
     def process_clipboard_content(self, raw_text):
-        threading.Thread(target=self._process_logic, args=(raw_text,), daemon=True).start()
+        threading.Thread(target=self._process_text_logic, args=(raw_text,), daemon=True).start()
 
-    def _process_logic(self, raw_text):
+    def _process_text_logic(self, raw_text):
         try:
-            if not raw_text or not raw_text.strip():
-                return
+            text = RE_SPACES.sub(' ', RE_NEWLINES.sub(' ', RE_HYPHEN.sub('', raw_text))).strip()
+            self.move_window_callback()
+            self.update_callback(None)
+            self.update_callback({"source_text": text})
 
-            text = self.clean_text(raw_text)
-            
-            # Aynı metin kontrolü
-            if text == self.last_text:
-                logging.info("♻️ Aynı metin. Önbellek gösteriliyor.")
-                self.move_window_callback()
-                cached = self.db.get_translation(text, "Academic")
-                if cached:
-                    self.update_callback(cached)
-                    self.update_callback({"finished": True})
-                return
-
-            self.last_text = text
-            self.move_window_callback() 
-            self.update_callback(None)  
-            self.update_callback({"source_text": text}) 
-
-            cached = self.db.get_translation(text, "Academic")
-            if cached and "translation" in cached:
+            cached = self.db.get_translation(text)
+            if cached:
                 self.update_callback(cached)
                 self.update_callback({"finished": True})
                 return
 
-            full_translation = ""
-            try:
-                for chunk in self.api.translate_text_stream(text):
-                    full_translation += chunk
-                    self.update_callback({"chunk": chunk})
-                
-                self.update_callback({"finished": True})
-                self.db.add_history(text, full_translation)
-                
-            except Exception as e:
-                logging.error(f"Translation Error: {e}")
-                self.update_callback(f"Hata: {str(e)}")
-
-        except Exception as e:
-            logging.error(f"FATAL ERROR in logic: {e}", exc_info=True)
-            self.update_callback(f"Kritik Hata: {str(e)}")
-
-    def process_humanize_request(self, source_text, current_text):
-        """Called manually from UI (Humanize button)"""
-        threading.Thread(target=self._humanize_logic, args=(source_text, current_text), daemon=True).start()
-
-    def _humanize_logic(self, source_text, current_text):
-        try:
-            # UI Clean up is handled by Popup immediately to show "Humanizing..."
-            # We just send data stream
-            
-            full_text = ""
-            for chunk in self.api.humanize_text_stream(source_text, current_text):
-                full_text += chunk
+            full = ""
+            for chunk in self.api.translate_text_stream(text):
+                full += chunk
                 self.update_callback({"chunk": chunk})
-            
-            self.update_callback({"finished": True}) # Signals popup to maybe re-enable buttons etc.
-
+            self.update_callback({"finished": True})
+            self.db.add_history(text, full)
         except Exception as e:
-            logging.error(f"Humanize Logic Error: {e}")
-            self.update_callback(f"Humanize Error: {str(e)}")
+            self.update_callback(f"Error: {e}")
+
+    def process_image(self, image_bytes):
+        threading.Thread(target=self._process_image_logic, args=(image_bytes,), daemon=True).start()
+
+    def _process_image_logic(self, image_bytes):
+        try:
+            self.update_callback(None)
+            self.update_callback({"source_text": "[Görsel İşleniyor...]"})
+            # Stream Buffer Logic
+            buffer = ""
+            is_translation_started = False
+            
+            for chunk in self.api.translate_image_stream(image_bytes):
+                if not is_translation_started:
+                    buffer += chunk
+                    if "###TRANSLATION###" in buffer:
+                        # Split source and translation
+                        parts = buffer.split("###TRANSLATION###")
+                        source_part = parts[0].replace("###SOURCE###", "").strip()
+                        
+                        # Update Source Text UI
+                        if source_part:
+                            self.update_callback({"source_text": source_part})
+                        
+                        # Process the remaining part as translation
+                        if len(parts) > 1 and parts[1]:
+                            self.update_callback({"chunk": parts[1]})
+                        
+                        is_translation_started = True
+                        buffer = "" # Clear buffer
+                else:
+                    # Direct stream for translation
+                    self.update_callback({"chunk": chunk})
+
+            # Eğer loop bitti ve hala bufferda veri varsa (Translation tag gelmediyse)
+            if not is_translation_started and buffer:
+                 cleaned = buffer.replace("###SOURCE###", "").strip()
+                 if cleaned:
+                     self.update_callback({"source_text": cleaned}) # Sadece source varmış gibi davran
+            self.update_callback({"finished": True})
+        except Exception as e:
+            self.update_callback(f"Image Error: {e}")
+
+    @pyqtSlot(str, str)
+    def process_humanize_request(self, source, current):
+        threading.Thread(target=self._humanize_logic, args=(source, current), daemon=True).start()
+    
+    def _humanize_logic(self, source, current):
+        try:
+            self.update_callback({"clear_translation": True})
+            for chunk in self.api.humanize_text_stream(source, current):
+                self.update_callback({"chunk": chunk})
+            self.update_callback({"finished": True})
+        except Exception as e:
+            self.update_callback(f"Humanize Error: {e}")

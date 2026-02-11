@@ -149,3 +149,61 @@ Strict Rules:
         except Exception as e:
             logging.error(f"❌ API Stream Error: {e}")
             yield f" [Hata: {str(e)}]"
+
+    def translate_image_stream(self, image_bytes):
+        if not image_bytes:
+            logging.error("❌ image_bytes BOŞ!")
+            return
+        
+        try:
+            # DEBUG LOGLARI
+            logging.info(f"🔍 Görüntü Alındı - Boyut: {len(image_bytes)} bytes")
+            logging.info(f"🔍 Veri Tipi: {type(image_bytes)}")
+            
+            prompt = """
+            You are a professional academic translator.
+            
+            STRICT INSTRUCTION:
+            1. EXTRACT the text from the image exactly as it appears.
+            2. DETECT the language of the extracted text.
+            3. TRANSLATE the text:
+               - If Turkish -> to Academic English.
+               - If NOT Turkish -> to Academic Turkish.
+            
+            OUTPUT FORMAT (Strictly follow this structure):
+            ###SOURCE###
+            (The extracted source text here)
+            ###TRANSLATION###
+            (The translation here)
+            """
+            
+            # ✅ DÜZELTME: Gemini 2.x API doğru formatı
+            image_part = types.Part(
+                inline_data=types.Blob(
+                    mime_type="image/png",
+                    data=image_bytes
+                )
+            )
+            
+            logging.info("✅ Part objesi oluşturuldu, API çağrısı başlıyor...")
+            
+            response = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=[prompt, image_part],
+                config=self.stream_config
+            )
+            
+            chunk_count = 0
+            for chunk in response:
+                if chunk.text:
+                    chunk_count += 1
+                    logging.info(f"📦 Chunk {chunk_count} alındı")
+                    yield chunk.text
+            
+            logging.info(f"✅ Çeviri tamamlandı - Toplam {chunk_count} chunk")
+            
+        except Exception as e:
+            logging.error(f"❌ API Image Stream Error: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            yield f" [Hata: {str(e)}]"
