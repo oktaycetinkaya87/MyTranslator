@@ -7,6 +7,7 @@ from PyQt6.QtGui import QCursor, QTextCursor, QIcon, QFont, QAction, QPixmap
 import platform
 import os
 import subprocess
+import re
 try:
     if platform.system() == 'Darwin':
         from AppKit import NSApplication
@@ -305,7 +306,10 @@ class TranslationPopup(QMainWindow):
                     self.translated_text.clear()
 
                 if "source_text" in data:
-                    self.original_text.setText(data["source_text"])
+                    raw_text = data["source_text"]
+                    # Tek satır sonlarını boşlukla değiştir (Paragraf koru)
+                    cleaned_text = re.sub(r'(?<!\n)\n(?!\n)', ' ', raw_text)
+                    self.original_text.setText(cleaned_text)
                     self.adjust_input_height()
                 if "chunk" in data:
                     self.append_chunk(data["chunk"])

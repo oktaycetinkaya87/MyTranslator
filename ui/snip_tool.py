@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QApplication
 from PyQt6.QtCore import Qt, QRect, pyqtSignal, QBuffer, QIODevice
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath
 
 class SnippingTool(QWidget):
     snippet_taken = pyqtSignal(object) 
@@ -10,8 +10,14 @@ class SnippingTool(QWidget):
         # MacOS için Tool yerine Window kullanmak bazen daha stabildir
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: black;")
-        self.setWindowOpacity(0.3)
+        self.setMouseTracking(True) # Fare hareketini sürekli izle
+        
+        # --- GÖRSEL AYARLAR ---
+        # Karartma Rengi (Siyahın %60'ı)
+        self.overlay_color = QColor(0, 0, 0, 160) 
+        # Seçim Çerçevesi Rengi (Mavi)
+        self.border_color = QColor(65, 155, 255)
+        
         self.begin = None
         self.end = None
         self.is_snipping = False
@@ -35,12 +41,46 @@ class SnippingTool(QWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.CrossCursor)
 
     def paintEvent(self, event):
+        """Spotlight Efekti (Delik Açma) ile Çizim"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        path = QPainterPath()
+        path.setFillRule(Qt.FillRule.OddEvenFill) # Kesişim kuralı
+        
+        # 1. Katman: Tüm Ekran
+        path.addRect(self.rect().toRectF())
+
+        # Eğer seçim yapılıyorsa 'Delik' aç
         if self.is_snipping and self.begin and self.end:
-            painter = QPainter(self)
-            painter.setPen(QPen(QColor(0, 122, 255), 2))
-            painter.setBrush(QBrush(QColor(0, 0, 0, 0)))
-            rect = QRect(self.begin, self.end)
-            painter.drawRect(rect)
+            # Koordinatları normalize et
+            x1 = min(self.begin.x(), self.end.x())
+            y1 = min(self.begin.y(), self.end.y())
+            x2 = max(self.begin.x(), self.end.x())
+            y2 = max(self.begin.y(), self.end.y())
+            selection_rect = QRect(x1, y1, x2 - x1, y2 - y1)
+            
+            # 2. Katman: Seçilen Alan (Delik)
+            path.addRect(selection_rect.toRectF())
+            
+            # Boyama (Delik hariç her yer boyanır)
+            painter.setBrush(self.overlay_color)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawPath(path)
+            
+            # Seçim alanının etrafına mavi çerçeve çiz
+            painter.setPen(QPen(self.border_color, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(selection_rect)
+            
+            # Boyutları yaz
+            text = f"{selection_rect.width()} x {selection_rect.height()}"
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(selection_rect.topLeft().x(), selection_rect.topLeft().y() - 10, text)
+            
+        else:
+            # Henüz seçim yok, her yeri karart
+            painter.fillRect(self.rect(), self.overlay_color)
 
     def mousePressEvent(self, event):
         # Eğer ilk bırakma henüz gerçekleşmediyse, bu yeni bir basmadır
