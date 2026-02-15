@@ -1,10 +1,11 @@
 # MyTranslator 🚀
 
-**MyTranslator** is a high-performance, native macOS translation utility designed for academic and professional use. It bridges the gap between your clipboard and advanced AI translation, offering instant, context-aware translations and human-level text refinement.
-
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
+![Coverage](https://img.shields.io/badge/coverage-72%25-green.svg)
+
+**MyTranslator** is a high-performance, native macOS translation utility designed for academic and professional use. It bridges the gap between your clipboard and advanced AI translation, offering instant, context-aware translations and human-level text refinement.
 
 ## ✨ Key Features
 
@@ -14,7 +15,16 @@ Powered by Google's latest **Gemini 2.5 Flash-Lite** model, MyTranslator is opti
 
 - **Instant Response:** Designed for sub-second query processing.
 - **Smart Warmup:** Automatically establishes SSL/TLS tunnels upon launch to eliminate "cold start" latency.
-- **Heartbeat System:** Keeps the connection alive in the background to ensure the API is always ready when you are.
+- **Heartbeat System:** Keeps the connection alive in the background.
+
+### ✂️ Advanced Snipping Tool with OCR
+
+Capture and translate text from anywhere on your screen, including images and protected documents.
+
+- **Spotlight Visuals:** Features a modern "dimmed overlay" with a clear cutout for the selected area.
+- **Dynamic Dimensions:** Shows real-time width/height of your selection.
+- **Shake to Snip:** Trigger the tool instantly by shaking your mouse while holding the left click (Configurable).
+- **Smart OCR:** Automatically strips hard line breaks from scanned text to ensure perfect formatting.
 
 ### ⌨️ Seamless "Double Copy" Trigger (Cmd+C+C)
 
@@ -23,20 +33,20 @@ Forget switching apps. Just highlight text and press `Cmd+C` twice.
 - **Background Listening:** A lightweight background thread monitors keyboard events using `pynput`.
 - **Smart Activation:** Detects the double-press pattern within a 0.5s window and instantly launches the translation popup.
 
-### 🍎 Native macOS Integration (AppKit)
+### 🍎 Native macOS Integration
 
 Built specifically for macOS, leveraging native APIs for maximum stability and performance.
 
-- **Thread-Safe Clipboard:** Uses `NSPasteboard` (via `pyobjc`) instead of subprocess calls, making clipboard reading **10x faster** and crash-proof.
-- **Focus Management:** Uses native `NSApplication` calls to steal focus instantly, bypassing OS restrictions that often plague Python apps.
-- **Agent Mode:** Runs silently in the background, hidden from the Dock and App Switcher, keeping your workspace clean.
+- **Thread-Safe Clipboard:** Uses `NSPasteboard` (via `pyobjc`) for 10x faster clipboard access.
+- **Focus Management:** Uses native `NSApplication` calls to steal focus instantly.
+- **Agent Mode:** Runs silently in the background, hidden from the Dock.
 
 ### 🎓 Academic "Humanize" Mode
 
-Go beyond translation. The **Humanize** feature rewrites your text to sound more natural and academic, specifically designed to bypass AI detection filters.
+Go beyond translation. The **Humanize** feature rewrites your text to sound more natural and academic.
 
-- **High Perplexity & Burstiness:** Varied sentence structures and vocabulary usage to mimic human writing styles.
-- **Context Preservation:** Maintains 100% of the original academic meaning while enhancing flow and readability.
+- **High Perplexity & Burstiness:** Varied sentence structures to mimic human writing.
+- **Context Preservation:** Maintains 100% of the original academic meaning.
 
 ## 🛠 Technical Architecture
 
@@ -45,6 +55,7 @@ Go beyond translation. The **Humanize** feature rewrites your text to sound more
 - **Input Monitoring:** `pynput` (Global keyboard hook)
 - **Clipboard/System:** `pyobjc-framework-Cocoa` (AppKit integration)
 - **AI Engine:** `google-genai` SDK (Gemini 2.5 Flash-Lite)
+- **Testing:** Comprehensive test suite with **72% Code Coverage** (96% Core Logic).
 
 ## 🚀 Installation & Usage
 
@@ -75,10 +86,9 @@ Go beyond translation. The **Humanize** feature rewrites your text to sound more
     ```
 
 5. **Usage:**
-    - Highlight any text in any app.
-    - Press `Cmd + C` twice quickly.
-    - The MyTranslator popup will appear with the translation.
-    - Click the **✨** button to humanize the text.
+    - **Text Translation:** Highlight text and press `Cmd + C` twice quickly.
+    - **Image Translation:** Shake mouse while holding Left Click (or use the Snipping Tool from the tray menu).
+    - **Humanize:** Click the **✨** button in the popup to refine the text.
 
 ## 📄 License
 
