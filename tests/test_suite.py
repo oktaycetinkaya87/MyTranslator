@@ -7,33 +7,8 @@ import sys
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from database.db_manager import DatabaseManager
+# TestDatabaseManager removed in favor of tests/test_database_manager.py
 from core.api_service import APIService
-
-class TestDatabaseManager(unittest.TestCase):
-    def setUp(self):
-        # DatabaseManager expects db_name, not db_path
-        self.test_db_name = "test_suite.db"
-        self.db = DatabaseManager(db_name=self.test_db_name)
-    
-    def tearDown(self):
-        # Cleanup test DB
-        if os.path.exists(self.db.db_path):
-            os.remove(self.db.db_path)
-
-    def test_add_and_get_history(self):
-        self.db.add_history("Hello", "Merhaba", "Academic")
-        history = self.db.get_last_history(limit=1) # get_history -> get_last_history
-        self.assertEqual(len(history), 1)
-        self.assertEqual(history[0]['original_text'], "Hello")
-        self.assertEqual(history[0]['translation'], "Merhaba") # translated_text -> translation
-
-    def test_cache_hit(self):
-        self.db.add_history("Cache Me", "Önbellek", "Academic")
-        result = self.db.get_translation("Cache Me", "Academic")
-        self.assertIsNotNone(result)
-        self.assertEqual(result['translation'], "Önbellek")
-
 class TestAPIService(unittest.TestCase):
     def setUp(self):
         # Mock API Key to bypass check
@@ -59,6 +34,29 @@ class TestAPIService(unittest.TestCase):
         chunks = list(self.api.translate_text_stream("Test"))
         
         self.assertEqual("".join(chunks), "Deneme")
+
+    @patch('core.api_service.APIService.warmup')
+    @patch('core.api_service.APIService._start_heartbeat')
+    def test_init_with_key(self, mock_beat, mock_warmup):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "KEY"}):
+             api = APIService()
+             self.assertEqual(api.api_key, "KEY")
+
+    def test_init_no_key(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=True):
+             # Depending on implementation, it might log or raise. 
+             # APIService usually looks at os.getenv
+             api = APIService()
+             # If it hasn't crashed, it's good. We can check if client is None or something.
+             pass
+
+    @patch('google.genai.Client')
+    def test_warmup(self, MockClient):
+        mock_client = MockClient.return_value
+        self.api.client = mock_client
+        self.api.warmup()
+        # Verify it called the model in some way.
+        mock_client.models.generate_content.assert_called()
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,3 +5,6 @@ mytranslator.db
 .DS_Store
 .vscode/
 *.log
+coverage.xml
+.coverage
+test_icon.png

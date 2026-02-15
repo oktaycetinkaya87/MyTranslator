@@ -44,6 +44,7 @@ docker run \
     -Dsonar.projectKey=mytranslator \
     -Dsonar.sources=. \
     -Dsonar.host.url=http://host.docker.internal:9000 \
+    -Dsonar.python.coverage.reportPaths=coverage.xml \
     -Dsonar.token=squ_56d8154bc0d72eccd216927ee71109e08ee7650a
 
 echo -e "${GREEN}✅ Analiz Tamamlandı!${NC}"
