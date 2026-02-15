@@ -48,6 +48,16 @@ Go beyond translation. The **Humanize** feature rewrites your text to sound more
 - **High Perplexity & Burstiness:** Varied sentence structures to mimic human writing.
 - **Context Preservation:** Maintains 100% of the original academic meaning.
 
+## 📸 Screenshots
+
+| Translation Popup | Settings Window |
+|:---:|:---:|
+| ![Popup](screenshots/popup_window.png) | ![Settings](screenshots/settings_window.png) |
+
+| History Window |
+|:---:|
+| ![History](screenshots/history_window.png) |
+
 ## 🛠 Technical Architecture
 
 - **Core:** Python 3.12+
