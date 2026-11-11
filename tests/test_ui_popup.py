@@ -59,29 +59,103 @@ def test_buttons_click(popup, qtbot):
     with qtbot.waitSignal(popup.settings_requested, timeout=1000):
         qtbot.mouseClick(popup.settings_btn, Qt.MouseButton.LeftButton)
 
+def show_translation(popup, source="Src", translation="Trans"):
+    """Bir çevirinin bittiği durumu, akışın gönderdiği iletilerle kurar."""
+    popup.update_content(None)
+    popup.update_content({"source_text": source})
+    popup.update_content({"chunk": translation})
+    popup.update_content({"finished": True})
+
 def test_refine_signal(popup, qtbot):
-    popup.update_content({"source_text": "Src", "translation": "Trans", "finished": True})
+    show_translation(popup)
+    assert popup.refine_btn.isVisible()
 
     with qtbot.waitSignal(popup.refine_requested, timeout=1000) as blocker:
         qtbot.mouseClick(popup.refine_btn, Qt.MouseButton.LeftButton)
 
     # Kaynak olarak ilk çeviri değil, çevirinin yapıldığı özgün metin gider
     assert blocker.args == ["Src", "Trans"]
-    assert popup.translated_text.toPlainText() == "Üslup iyileştiriliyor..."
+
+    # Yanıt gelene kadar düğmeler gizli, ilerleme çubuğu açık
+    assert not popup.refine_btn.isVisible()
+    assert not popup.copy_btn.isVisible()
+    assert popup.progress_bar.isVisible()
+
+def test_refine_replaces_translation(popup):
+    show_translation(popup)
+    popup.on_refine_click()
+
+    popup.update_content({"clear_translation": True})
+    popup.update_content({"chunk": "Refined"})
+    popup.update_content({"finished": True})
+
+    assert popup.translated_text.toPlainText() == "Refined"
+    assert popup.refine_btn.isVisible()
+    assert not popup.progress_bar.isVisible()
+    assert popup.info_label.text() == ""
+
+def test_refine_ignores_click_while_running(popup, qtbot):
+    show_translation(popup)
+    popup.on_refine_click()
+    popup.update_content({"clear_translation": True})
+    popup.update_content({"chunk": "Half"})
+
+    # Yarım gelen metin ikinci bir istek olarak gönderilmez
+    with qtbot.assertNotEmitted(popup.refine_requested):
+        popup.on_refine_click()
+
+@pytest.mark.parametrize("failed_stream", [
+    [{"chunk": " [Error: 429 RESOURCE_EXHAUSTED]"}, {"finished": True}],  # API hatası
+    [{"chunk": "Half "}, {"chunk": " [Error: reset]"}, {"finished": True}],  # akış ortasında hata
+    [{"finished": True}],  # model boş döndü
+    ["Error: thread failed"],  # işleyici hatası
+])
+def test_failed_refine_restores_translation(popup, qtbot, failed_stream):
+    show_translation(popup)
+    popup.on_refine_click()
+    popup.update_content({"clear_translation": True})
+    for message in failed_stream:
+        popup.update_content(message)
+
+    assert popup.translated_text.toPlainText() == "Trans"
+    assert popup.info_label.text().startswith("⚠️")
+    assert popup.refine_btn.isVisible()
+
+    # Yeniden deneme hata iletisini değil, çeviriyi gönderir
+    with qtbot.waitSignal(popup.refine_requested, timeout=1000) as blocker:
+        popup.on_refine_click()
+    assert blocker.args == ["Src", "Trans"]
 
 def test_refine_signal_skips_placeholder_source(popup, qtbot):
-    # Ekran çevirisinde kaynak kutusunda yer tutucu kalmış olabilir
-    popup.update_content({"source_text": "[Görsel İşleniyor...]", "translation": "Trans", "finished": True})
+    # Ekran çevirisinde model kaynak metni ayırmadıysa kutuda yer tutucu kalır
+    show_translation(popup, source="[Görsel İşleniyor...]")
 
     with qtbot.waitSignal(popup.refine_requested, timeout=1000) as blocker:
-        qtbot.mouseClick(popup.refine_btn, Qt.MouseButton.LeftButton)
+        popup.on_refine_click()
 
     assert blocker.args == ["", "Trans"]
 
-def test_refine_click_without_translation_does_nothing(popup, qtbot):
+def test_refine_sends_source_with_markup_unchanged(popup, qtbot):
+    # Etiketle başlayan metni Qt zengin metin sanıp etiketleri yutabilir
+    source = "<b>Results</b> were significant (p < .05)."
+    show_translation(popup, source=source)
+
+    with qtbot.waitSignal(popup.refine_requested, timeout=1000) as blocker:
+        popup.on_refine_click()
+
+    assert blocker.args == [source, "Trans"]
+
+@pytest.mark.parametrize("not_a_translation", [
+    "",
+    " [Hata: 503 UNAVAILABLE]",
+    "Half a sentence [Error: reset]",
+    "❌ Çeviri limitine ulaştınız! (0/100 kaldı)",
+])
+def test_refine_needs_a_translation(popup, qtbot, not_a_translation):
     popup.update_content({"source_text": "Src"})
+    popup.update_text(not_a_translation)
 
     with qtbot.assertNotEmitted(popup.refine_requested):
         popup.on_refine_click()
 
-    assert popup.translated_text.toPlainText() == ""
+    assert popup.translated_text.toPlainText() == not_a_translation

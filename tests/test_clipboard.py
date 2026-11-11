@@ -118,3 +118,24 @@ def test_process_text_api(clipboard_handler):
     clipboard_handler.db.add_history.assert_called_with("Hello", "Hello")
     # Usage increment
     clipboard_handler.usage_tracker.increment.assert_called_once()
+
+def test_refine_logic_streams_into_popup(clipboard_handler):
+    clipboard_handler.api.refine_text_stream.return_value = iter(["Refined ", "text"])
+
+    clipboard_handler._refine_logic("Source", "Current")
+
+    clipboard_handler.api.refine_text_stream.assert_called_once_with("Source", "Current")
+    assert [c.args[0] for c in clipboard_handler.update_callback.call_args_list] == [
+        {"clear_translation": True},
+        {"chunk": "Refined "},
+        {"chunk": "text"},
+        {"finished": True},
+    ]
+
+def test_refine_logic_reports_failure_as_error(clipboard_handler):
+    clipboard_handler.api.refine_text_stream.side_effect = RuntimeError("boom")
+
+    clipboard_handler._refine_logic("Source", "Current")
+
+    # "Error:" ile başlayan ileti pencerede çeviri kutusuna değil hata satırına yazılır
+    clipboard_handler.update_callback.assert_called_with("Error: boom")

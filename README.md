@@ -45,8 +45,8 @@ Built specifically for macOS, leveraging native APIs for maximum stability and p
 Go beyond translation. **Doğal Yazım** copy-edits the translation so it reads as natural academic prose in its own language.
 
 - **Translation Artefacts Removed:** Literal constructions, stock phrases and stacked connectors are edited out.
-- **Meaning Preserved:** Claims, hedging, terminology, numbers and citations stay exactly as they are; nothing is added or removed.
-- **Source-Checked:** The original text is sent along so the edit stays faithful to it.
+- **Meaning Kept:** The editor is instructed to leave claims, hedging, terminology, numbers and citations as they are and to add or remove nothing. Check numbers and citations before you use the text.
+- **Source-Aware:** The original text is sent along as a reference for ambiguous phrases; the translation itself is not re-checked against it.
 
 ## 📸 Screenshots
 

@@ -92,6 +92,22 @@ class TestAPIServiceAdvanced(unittest.TestCase):
                 self.assertEqual(kwargs["config"].system_instruction, REFINE_SYSTEM_PROMPT)
 
     @patch('google.genai.Client')
+    def test_refine_text_stream_without_source(self, MockClient):
+        mock_client_instance = MockClient.return_value
+        mock_chunk = MagicMock()
+        mock_chunk.text = "Refined"
+        mock_client_instance.models.generate_content_stream.return_value = iter([mock_chunk])
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
+            with patch('core.api_service.APIService.warmup'):
+                service = APIService()
+                chunks = list(service.refine_text_stream("", "current"))
+                self.assertEqual("".join(chunks), "Refined")
+
+                kwargs = mock_client_instance.models.generate_content_stream.call_args.kwargs
+                self.assertEqual(kwargs["contents"], "<current_text>\ncurrent\n</current_text>")
+
+    @patch('google.genai.Client')
     def test_translate_image_stream_success(self, MockClient):
         mock_client_instance = MockClient.return_value
         mock_chunk = MagicMock()

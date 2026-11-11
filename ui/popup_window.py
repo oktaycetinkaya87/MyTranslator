@@ -18,6 +18,8 @@ from ui.snip_tool import SnippingTool
 
 # Kaynak kutusunda gösterilen ama gerçek kaynak metin olmayan yer tutucular
 SOURCE_PLACEHOLDERS = ("Veri alınıyor...", "[Görsel İşleniyor...]")
+# Çeviri kutusuna düşen ama çeviri olmayan hata iletilerinin işaretleri
+ERROR_MARKERS = ("[Error:", "[Hata:")
 
 class TranslationPopup(QMainWindow):
     # Doğal Yazım isteği: (kaynak metin, penceredeki çeviri) gönderir
@@ -27,6 +29,9 @@ class TranslationPopup(QMainWindow):
 
     def __init__(self):
         super().__init__()
+
+        # Doğal Yazım isteği sürerken, başarısız olursa geri konacak çeviri
+        self._pre_refine_text = None
 
         # --- PENCERE AYARLARI (DÜZELTİLDİ) ---
         self.setWindowFlags(
@@ -276,6 +281,8 @@ class TranslationPopup(QMainWindow):
         self.progress_bar.show()
         self.original_text.setText("Veri alınıyor...")
         self.translated_text.clear()
+        self.info_label.setText("")
+        self._pre_refine_text = None
 
         self.copy_btn.hide()
         self.refine_btn.hide()
@@ -304,16 +311,19 @@ class TranslationPopup(QMainWindow):
                     raw_text = data["source_text"]
                     # Tek satır sonlarını boşlukla değiştir (Paragraf koru)
                     cleaned_text = re.sub(r'(?<!\n)\n(?!\n)', ' ', raw_text)
-                    self.original_text.setText(cleaned_text)
+                    # Düz metin: kaynakta "<...>" geçse bile olduğu gibi gösterilir ve geri okunur
+                    self.original_text.setPlainText(cleaned_text)
                     self.adjust_input_height()
                 if "chunk" in data:
                     self.append_chunk(data["chunk"])
                 elif "translation" in data:
                     self.update_text(data["translation"])
                 elif "finished" in data:
+                    self._finish_refine()
                     self.stop_loading()
                 
             elif isinstance(data, str):
+                self._finish_refine()
                 self.stop_loading()
                 if data.startswith("Hata:") or data.startswith("Error:") or "[Error:" in data:
                     self.info_label.setText(f"⚠️ {data}")
@@ -347,17 +357,38 @@ class TranslationPopup(QMainWindow):
 
     def on_refine_click(self):
         """Doğal Yazım butonuna basılınca"""
+        if self._pre_refine_text is not None:
+            return  # Önceki istek henüz bitmedi
+
         current_text = self.translated_text.toPlainText()
-        if not current_text.strip():
-            return
+        stripped = current_text.strip()
+        if not stripped or stripped.startswith("❌") or any(m in stripped for m in ERROR_MARKERS):
+            return  # Düzeltilecek bir çeviri yok
 
         # Anlam denetimi için çevirinin yapıldığı kaynak metin gönderilir
         source_text = self.original_text.toPlainText()
         if source_text in SOURCE_PLACEHOLDERS:
             source_text = ""
 
-        self.translated_text.setPlainText("Üslup iyileştiriliyor...")
+        # Yanıt gelene kadar düğmeler gizlenir; yarım metin ikinci kez gönderilemez
+        self._pre_refine_text = current_text
+        self.info_label.setText("")
+        self.copy_btn.hide()
+        self.refine_btn.hide()
+        self.progress_bar.show()
         self.refine_requested.emit(source_text, current_text)
+
+    def _finish_refine(self):
+        """Doğal Yazım hata verdiyse ya da boş döndüyse önceki çeviriyi geri koyar."""
+        previous, self._pre_refine_text = self._pre_refine_text, None
+        if previous is None:
+            return
+
+        result = self.translated_text.toPlainText()
+        if not result.strip() or any(m in result for m in ERROR_MARKERS):
+            self.translated_text.setPlainText(previous)
+            self.info_label.setText("⚠️ Üslup iyileştirilemedi, çeviri geri yüklendi.")
+            self.info_label.setStyleSheet("color: red; font-size: 11px;")
 
     def adjust_input_height(self):
         doc_height = self.original_text.document().size().height()

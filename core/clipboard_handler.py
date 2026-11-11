@@ -280,4 +280,4 @@ class ClipboardHandler(QObject):
                 self.update_callback({"chunk": chunk})
             self.update_callback({"finished": True})
         except Exception as e:
-            self.update_callback(f"Refine Error: {e}")
+            self.update_callback(f"Error: {e}")

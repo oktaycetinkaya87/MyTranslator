@@ -5,9 +5,6 @@ GREEN='\033[0;32m'
 Blue='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Token repoda tutulmaz; çalıştırmadan önce ortam değişkeni olarak verin.
-: "${SONAR_TOKEN:?SONAR_TOKEN ortam değişkenini ayarlayın}"
-
 echo -e "${Blue}🚀 SonarQube Analizi Başlatılıyor...${NC}"
 
 # 1. SonarQube Sunucusunu Başlat
@@ -33,9 +30,12 @@ echo -e "\n✅ SonarQube Sunucusu Hazır!"
 
 # 3. Şifreyi Değiştir (Zorunlu)
 echo -e "${Blue}🔑 Varsayılan şifre güncelleniyor...${NC}"
-# curl -s -u admin:admin -X POST "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=AdminPassword123!" > /dev/null
+# curl -s -u admin:admin -X POST "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=<YENI_SIFRE>" > /dev/null
 
 # 4. Analizi Başlat
+# Token repoda tutulmaz. Sunucu açıldıktan sonra http://localhost:9000 üzerinden
+# üretip ortam değişkeni olarak verin.
+: "${SONAR_TOKEN:?SONAR_TOKEN ortam değişkenini ayarlayın}"
 echo -e "${Blue}🔍 Kod Analizi Başlatılıyor...${NC}"
 
 # Mac M1/M2 (ARM64) uyumluluğu için platform belirtilebilir, ancak genellikle otomatik algılanır.
@@ -52,4 +52,4 @@ docker run \
 
 echo -e "${GREEN}✅ Analiz Tamamlandı!${NC}"
 echo -e "📊 Raporu görüntülemek için: http://localhost:9000/dashboard?id=mytranslator"
-echo -e "🔑 Giriş: admin / AdminPassword123! (Şifre güncellendi)"
+echo -e "🔑 Giriş: http://localhost:9000 (kullanıcı: admin)"
