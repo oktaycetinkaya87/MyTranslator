@@ -16,18 +16,17 @@ except ImportError:
 
 from ui.snip_tool import SnippingTool
 
+# Kaynak kutusunda gösterilen ama gerçek kaynak metin olmayan yer tutucular
+SOURCE_PLACEHOLDERS = ("Veri alınıyor...", "[Görsel İşleniyor...]")
+
 class TranslationPopup(QMainWindow):
-    # Yeni Signal: Rephrase/Humanize isteği için (source_text, current_text) gönderir
-    humanize_requested = pyqtSignal(str, str)
+    # Doğal Yazım isteği: (kaynak metin, penceredeki çeviri) gönderir
+    refine_requested = pyqtSignal(str, str)
     settings_requested = pyqtSignal()
     image_captured = pyqtSignal(bytes) # Yeni Sinyal 
 
     def __init__(self):
         super().__init__()
-        
-        # --- EKLENEN KISIM 1: Değişkeni Başlat ---
-        self.original_translation = None 
-        # ---------------------------------------
 
         # --- PENCERE AYARLARI (DÜZELTİLDİ) ---
         self.setWindowFlags(
@@ -222,12 +221,12 @@ class TranslationPopup(QMainWindow):
             }
         """ + scrollbar_style)
 
-        # HUMANİZE BUTONU
-        self.humanize_btn = QPushButton("✨") 
-        self.humanize_btn.setToolTip("Humanize (Daha Doğal Yap)")
-        self.humanize_btn.setFixedSize(32, 32)
-        self.humanize_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.humanize_btn.setStyleSheet("""
+        # DOĞAL YAZIM BUTONU
+        self.refine_btn = QPushButton("✨") 
+        self.refine_btn.setToolTip("Doğal Yazım (üslubu iyileştir)")
+        self.refine_btn.setFixedSize(32, 32)
+        self.refine_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.refine_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent; 
                 border: none;
@@ -241,10 +240,10 @@ class TranslationPopup(QMainWindow):
                 border: 1px solid #FFE082;
             }
         """)
-        self.humanize_btn.clicked.connect(self.on_humanize_click)
-        self.humanize_btn.hide() # Başlangıçta gizli
+        self.refine_btn.clicked.connect(self.on_refine_click)
+        self.refine_btn.hide() # Başlangıçta gizli
 
-        header_row_layout.addWidget(self.humanize_btn)
+        header_row_layout.addWidget(self.refine_btn)
         header_row_layout.addWidget(self.copy_btn)
 
         bottom_layout.addWidget(translation_header)
@@ -277,19 +276,15 @@ class TranslationPopup(QMainWindow):
         self.progress_bar.show()
         self.original_text.setText("Veri alınıyor...")
         self.translated_text.clear()
-        
-        # --- EKLENEN KISIM 2: Yeni işlemde eski kaydı temizle ---
-        self.original_translation = None 
-        # --------------------------------------------------------
 
         self.copy_btn.hide()
-        self.humanize_btn.hide()
+        self.refine_btn.hide()
 
     def stop_loading(self):
         self.progress_bar.hide()
         if self.translated_text.toPlainText():
             self.copy_btn.show()
-            self.humanize_btn.show()
+            self.refine_btn.show()
 
     def update_content(self, data):
         try:
@@ -317,8 +312,6 @@ class TranslationPopup(QMainWindow):
                     self.update_text(data["translation"])
                 elif "finished" in data:
                     self.stop_loading()
-                    if self.original_translation is None:
-                         self.original_translation = self.translated_text.toPlainText()
                 
             elif isinstance(data, str):
                 self.stop_loading()
@@ -352,18 +345,19 @@ class TranslationPopup(QMainWindow):
         except Exception as e:
             print(f"Error append: {e}")
 
-    def on_humanize_click(self):
-        """Humanize butonuna basılınca"""
-        print("DEBUG: Humanize Button Clicked!") # Debug Log
+    def on_refine_click(self):
+        """Doğal Yazım butonuna basılınca"""
         current_text = self.translated_text.toPlainText()
-        
-        # Eğer henüz orijinal kaydedilmediyse (örn. tamamlanmadan basıldıysa), şu anki hali orijinal kabul et
-        source_ref = self.original_translation if self.original_translation else current_text
-        
-        if source_ref.strip():
-            self.translated_text.setPlainText("Humanizing...") 
-            # (Source Reference, Current Text) gönderilir
-            self.humanize_requested.emit(source_ref, current_text)
+        if not current_text.strip():
+            return
+
+        # Anlam denetimi için çevirinin yapıldığı kaynak metin gönderilir
+        source_text = self.original_text.toPlainText()
+        if source_text in SOURCE_PLACEHOLDERS:
+            source_text = ""
+
+        self.translated_text.setPlainText("Üslup iyileştiriliyor...")
+        self.refine_requested.emit(source_text, current_text)
 
     def adjust_input_height(self):
         doc_height = self.original_text.document().size().height()

@@ -30,7 +30,7 @@ def test_popup_initial_state(popup):
     assert popup.width() == 500
     assert popup.height() == 480
     assert not popup.copy_btn.isVisible()
-    assert not popup.humanize_btn.isVisible()
+    assert not popup.refine_btn.isVisible()
     assert not popup.progress_bar.isVisible()
 
 def test_start_loading(popup):
@@ -59,16 +59,29 @@ def test_buttons_click(popup, qtbot):
     with qtbot.waitSignal(popup.settings_requested, timeout=1000):
         qtbot.mouseClick(popup.settings_btn, Qt.MouseButton.LeftButton)
 
-def test_humanize_signal(popup, qtbot):
+def test_refine_signal(popup, qtbot):
     popup.update_content({"source_text": "Src", "translation": "Trans", "finished": True})
-    
-    with qtbot.waitSignal(popup.humanize_requested, timeout=1000) as blocker:
-        qtbot.mouseClick(popup.humanize_btn, Qt.MouseButton.LeftButton)
-    
-    # Check signal arguments. 
-    # Logic in popup: source_ref = self.original_translation if self.original_translation else current_text
-    # original_translation is set when finished=True.
-    # So if we passed "translation": "Trans", original_translation becomes "Trans"
-    # Wait, original_translation is set to translated_text.toPlainText() when finished.
-    # So source_ref = "Trans". args = ["Trans", "Trans"]
-    assert blocker.args == ["Trans", "Trans"]
+
+    with qtbot.waitSignal(popup.refine_requested, timeout=1000) as blocker:
+        qtbot.mouseClick(popup.refine_btn, Qt.MouseButton.LeftButton)
+
+    # Kaynak olarak ilk çeviri değil, çevirinin yapıldığı özgün metin gider
+    assert blocker.args == ["Src", "Trans"]
+    assert popup.translated_text.toPlainText() == "Üslup iyileştiriliyor..."
+
+def test_refine_signal_skips_placeholder_source(popup, qtbot):
+    # Ekran çevirisinde kaynak kutusunda yer tutucu kalmış olabilir
+    popup.update_content({"source_text": "[Görsel İşleniyor...]", "translation": "Trans", "finished": True})
+
+    with qtbot.waitSignal(popup.refine_requested, timeout=1000) as blocker:
+        qtbot.mouseClick(popup.refine_btn, Qt.MouseButton.LeftButton)
+
+    assert blocker.args == ["", "Trans"]
+
+def test_refine_click_without_translation_does_nothing(popup, qtbot):
+    popup.update_content({"source_text": "Src"})
+
+    with qtbot.assertNotEmitted(popup.refine_requested):
+        popup.on_refine_click()
+
+    assert popup.translated_text.toPlainText() == ""

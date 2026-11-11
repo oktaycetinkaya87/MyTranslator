@@ -66,7 +66,7 @@ class MainApp(QObject):
         )
         
         self.popup.settings_requested.connect(self.open_settings)
-        self.popup.humanize_requested.connect(self.clipboard_handler.process_humanize_request)
+        self.popup.refine_requested.connect(self.clipboard_handler.process_refine_request)
         self.popup.image_captured.connect(self.clipboard_handler.process_image)
 
         # System Tray Başlat

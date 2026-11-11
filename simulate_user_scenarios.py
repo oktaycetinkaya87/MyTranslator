@@ -76,26 +76,26 @@ def simulate_user_scenarios():
     except Exception as e:
         print(f"❌ Database Error: {e}")
 
-    # 4. Scenario: Humanize Request
-    print("\n🔹 [Step 4] Simulating 'Humanize' Request...")
+    # 4. Scenario: Refine Request
+    print("\n🔹 [Step 4] Simulating 'Refine' Request...")
     try:
         if translated_text:
-            print("   Humanizing...", end="", flush=True)
-            humanized_chunks = []
-            for chunk in api.humanize_text_stream(test_text, translated_text):
-                humanized_chunks.append(chunk)
+            print("   Refining...", end="", flush=True)
+            refined_chunks = []
+            for chunk in api.refine_text_stream(test_text, translated_text):
+                refined_chunks.append(chunk)
                 print(".", end="", flush=True)
-            humanized_text = "".join(humanized_chunks)
-            print("\n   Humanized Text:", humanized_text)
+            refined_text = "".join(refined_chunks)
+            print("\n   Refined Text:", refined_text)
             
-            if len(humanized_text) > 5:
-                print("✅ Humanize Scenario: PASS")
+            if len(refined_text) > 5:
+                print("✅ Refine Scenario: PASS")
             else:
-                print("❌ Humanize Scenario: FAIL")
+                print("❌ Refine Scenario: FAIL")
         else:
-            print("⚠️ Skipping Humanize test due to translation failure.")
+            print("⚠️ Skipping Refine test due to translation failure.")
     except Exception as e:
-        print(f"\n❌ Humanize Error: {e}")
+        print(f"\n❌ Refine Error: {e}")
 
     # Cleanup
     if os.path.exists("simulation_test.db"):

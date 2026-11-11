@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![Coverage](https://img.shields.io/badge/coverage-72%25-green.svg)
 
-**MyTranslator** is a high-performance, native macOS translation utility designed for academic and professional use. It bridges the gap between your clipboard and advanced AI translation, offering instant, context-aware translations and human-level text refinement.
+**MyTranslator** is a high-performance, native macOS translation utility designed for academic and professional use. It bridges the gap between your clipboard and advanced AI translation, offering instant, context-aware translations and academic style refinement.
 
 ## ✨ Key Features
 
@@ -15,7 +15,6 @@ Powered by Google's latest **Gemini 2.5 Flash-Lite** model, MyTranslator is opti
 
 - **Instant Response:** Designed for sub-second query processing.
 - **Smart Warmup:** Automatically establishes SSL/TLS tunnels upon launch to eliminate "cold start" latency.
-- **Heartbeat System:** Keeps the connection alive in the background.
 
 ### ✂️ Advanced Snipping Tool with OCR
 
@@ -41,12 +40,13 @@ Built specifically for macOS, leveraging native APIs for maximum stability and p
 - **Focus Management:** Uses native `NSApplication` calls to steal focus instantly.
 - **Agent Mode:** Runs silently in the background, hidden from the Dock.
 
-### 🎓 Academic "Humanize" Mode
+### 🎓 Doğal Yazım (Academic Style Refinement)
 
-Go beyond translation. The **Humanize** feature rewrites your text to sound more natural and academic.
+Go beyond translation. **Doğal Yazım** copy-edits the translation so it reads as natural academic prose in its own language.
 
-- **High Perplexity & Burstiness:** Varied sentence structures to mimic human writing.
-- **Context Preservation:** Maintains 100% of the original academic meaning.
+- **Translation Artefacts Removed:** Literal constructions, stock phrases and stacked connectors are edited out.
+- **Meaning Preserved:** Claims, hedging, terminology, numbers and citations stay exactly as they are; nothing is added or removed.
+- **Source-Checked:** The original text is sent along so the edit stays faithful to it.
 
 ## 📸 Screenshots
 
@@ -98,7 +98,7 @@ Go beyond translation. The **Humanize** feature rewrites your text to sound more
 5. **Usage:**
     - **Text Translation:** Highlight text and press `Cmd + C` twice quickly.
     - **Image Translation:** Shake mouse while holding Left Click (or use the Snipping Tool from the tray menu).
-    - **Humanize:** Click the **✨** button in the popup to refine the text.
+    - **Doğal Yazım:** Click the **✨** button in the popup to refine the translation.
 
 ## 📄 License
 

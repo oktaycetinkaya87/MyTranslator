@@ -1,10 +1,11 @@
 import os
 import logging
-import time
 import threading
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+
+from core.prompts import REFINE_SYSTEM_PROMPT, build_refine_request
 
 load_dotenv()
 
@@ -34,11 +35,8 @@ class APIService:
             system_instruction="Translate to Academic Turkish (if input not TR) or Academic English (if TR). No explanations."
         )
 
-        # 🛡️ ÇİFTE KORUMA (Latency Önleyici)
         # Warmup: İlk açılıştaki SSL el sıkışmasını yapar.
-        # Heartbeat: Bağlantıyı sürekli canlı tutar.
         self.warmup()
-        self._start_heartbeat()
 
     def warmup(self):
         """
@@ -60,79 +58,27 @@ class APIService:
 
         threading.Thread(target=_warmup_task, daemon=True).start()
 
-    def _start_heartbeat(self):
-        """
-        HEARTBEAT (Kalp Atışı)
-        Siz çalışmasanız bile 45 saniyede bir boş sinyal göndererek
-        Google ile olan hattın 'soğumasını' ve kapanmasını engeller.
-        """
-        def _beat():
-            # Warmup ile çakışmaması için 5 saniye bekle
-            time.sleep(5) 
-            logging.info("💓 [Heartbeat] Servisi devrede.")
-            
-            while True:
-                # 45 saniyede bir (Google genelde 60sn'de hattı keser, biz 45 ile güvenli oynuyoruz)
-                time.sleep(45)
-                try:
-                    # Boş bir ping at (Token maliyeti yok gibidir)
-                    self.client.models.generate_content(
-                        model=self.model_name,
-                        contents=".",
-                        config=types.GenerateContentConfig(max_output_tokens=1)
-                    )
-                    # Logları kirletmemek için pass geçiyoruz, arka planda sessizce çalışır.
-                except Exception:
-                    pass 
+    def refine_text_stream(self, source_text, current_text):
+        """Çeviriyi, anlamını değiştirmeden akademik üslup açısından düzeltir."""
+        if not current_text or not current_text.strip(): return
 
-        threading.Thread(target=_beat, daemon=True).start()
-
-    # ✨ YENİ FONKSİYON: Humanize
-    def humanize_text_stream(self, source_text, current_text):
-        if not source_text: return
-        
-        HUMANIZE_SYSTEM_PROMPT = """
-You are an expert academic editor. Your task is to rewrite the 'Current Text' to make it indistinguishable from human writing, specifically to bypass AI detection filters.
-
-Goal: High Perplexity and High Burstiness.
-1.  **Perplexity (Complexity):** Avoid predictable word choices. Use varied vocabulary and slightly more complex sentence structures where appropriate for academia.
-2.  **Burstiness (Sentence Variation):** AI generates sentences of uniform length. You must vary sentence length significantly. Mix short, punchy sentences with longer, complex compound sentences.
-
-Strict Rules:
--   **CRITICAL:** OUTPUT MUST BE IN THE SAME LANGUAGE AS THE 'Current Text'.
--   **NEVER** translate the text back to the 'Source Reference Text' language.
--   Preserve the original academic meaning 100%.
--   Do NOT be too formal/robotic. Use natural transitions (e.g., "Furthermore," "On the other hand," "Crucially").
--   If 'Current Text' is Turkish -> Output Turkish.
--   If 'Current Text' is English -> Output English.
--   Output ONLY the rewritten text.
-"""
-        
-        humanize_config = types.GenerateContentConfig(
-            temperature=0.7, 
+        refine_config = types.GenerateContentConfig(
+            temperature=0.4,
             max_output_tokens=2048,
-            system_instruction=HUMANIZE_SYSTEM_PROMPT
+            system_instruction=REFINE_SYSTEM_PROMPT
         )
-
-        user_prompt = f"Source Reference Text:\n{source_text}\n\nCurrent Text:\n{current_text}"
-        
-        # DEBUG LOG
-        logging.critical("\n--- HUMANIZE PROMPT ---")
-        logging.critical(f"Source Len: {len(source_text)}")
-        logging.critical("-----------------------")
 
         try:
             response = self.client.models.generate_content_stream(
                 model=self.model_name,
-                contents=user_prompt,
-                config=humanize_config
+                contents=build_refine_request(source_text, current_text),
+                config=refine_config
             )
             for chunk in response:
-                if chunk.text: 
-                    logging.critical(f"DEBUG CHUNK: {chunk.text[:20]}...") # Gelen veriyi gör
+                if chunk.text:
                     yield chunk.text
         except Exception as e:
-            logging.error(f"❌ Humanize Error: {e}")
+            logging.error(f"❌ Refine Error: {e}")
             yield f" [Error: {str(e)}]"
 
     def translate_text_stream(self, text):

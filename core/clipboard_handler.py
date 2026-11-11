@@ -270,14 +270,14 @@ class ClipboardHandler(QObject):
             self.update_callback(f"Image Error: {e}")
 
     @pyqtSlot(str, str)
-    def process_humanize_request(self, source, current):
-        threading.Thread(target=self._humanize_logic, args=(source, current), daemon=True).start()
+    def process_refine_request(self, source, current):
+        threading.Thread(target=self._refine_logic, args=(source, current), daemon=True).start()
     
-    def _humanize_logic(self, source, current):
+    def _refine_logic(self, source, current):
         try:
             self.update_callback({"clear_translation": True})
-            for chunk in self.api.humanize_text_stream(source, current):
+            for chunk in self.api.refine_text_stream(source, current):
                 self.update_callback({"chunk": chunk})
             self.update_callback({"finished": True})
         except Exception as e:
-            self.update_callback(f"Humanize Error: {e}")
+            self.update_callback(f"Refine Error: {e}")

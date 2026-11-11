@@ -14,8 +14,7 @@ class TestAPIService(unittest.TestCase):
         # Mock API Key to bypass check
         with patch.dict(os.environ, {"GEMINI_API_KEY": "FAKE_KEY"}):
             with patch('core.api_service.APIService.warmup') as mock_warmup:
-                with patch('core.api_service.APIService._start_heartbeat') as mock_beat:
-                     self.api = APIService()
+                self.api = APIService()
 
     @patch('google.genai.Client')
     def test_translate_text_stream(self, MockClient): # Changed to test stream method
@@ -36,8 +35,7 @@ class TestAPIService(unittest.TestCase):
         self.assertEqual("".join(chunks), "Deneme")
 
     @patch('core.api_service.APIService.warmup')
-    @patch('core.api_service.APIService._start_heartbeat')
-    def test_init_with_key(self, mock_beat, mock_warmup):
+    def test_init_with_key(self, mock_warmup):
         with patch.dict(os.environ, {"GEMINI_API_KEY": "KEY"}):
              api = APIService()
              self.assertEqual(api.api_key, "KEY")

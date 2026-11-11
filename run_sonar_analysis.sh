@@ -5,6 +5,9 @@ GREEN='\033[0;32m'
 Blue='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Token repoda tutulmaz; çalıştırmadan önce ortam değişkeni olarak verin.
+: "${SONAR_TOKEN:?SONAR_TOKEN ortam değişkenini ayarlayın}"
+
 echo -e "${Blue}🚀 SonarQube Analizi Başlatılıyor...${NC}"
 
 # 1. SonarQube Sunucusunu Başlat
@@ -45,7 +48,7 @@ docker run \
     -Dsonar.sources=. \
     -Dsonar.host.url=http://host.docker.internal:9000 \
     -Dsonar.python.coverage.reportPaths=coverage.xml \
-    -Dsonar.token=squ_56d8154bc0d72eccd216927ee71109e08ee7650a
+    -Dsonar.token="$SONAR_TOKEN"
 
 echo -e "${GREEN}✅ Analiz Tamamlandı!${NC}"
 echo -e "📊 Raporu görüntülemek için: http://localhost:9000/dashboard?id=mytranslator"

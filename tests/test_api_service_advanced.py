@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock, ANY
 import os
 import threading
 from core.api_service import APIService
+from core.prompts import REFINE_SYSTEM_PROMPT
 
 class TestAPIServiceAdvanced(unittest.TestCase):
 
@@ -17,15 +18,13 @@ class TestAPIServiceAdvanced(unittest.TestCase):
             mock_log.assert_called_with("❌ API Key missing!")
 
     @patch('core.api_service.APIService.warmup')
-    @patch('core.api_service.APIService._start_heartbeat')
     @patch('google.genai.Client')
-    def test_init_success(self, MockClient, mock_heartbeat, mock_warmup):
+    def test_init_success(self, MockClient, mock_warmup):
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
             service = APIService()
             self.assertEqual(service.api_key, "fake_key")
             MockClient.assert_called_once()
             mock_warmup.assert_called_once()
-            mock_heartbeat.assert_called_once()
 
     @patch('google.genai.Client')
     def test_warmup_exception(self, MockClient):
@@ -49,45 +48,48 @@ class TestAPIServiceAdvanced(unittest.TestCase):
         mock_client_instance.models.generate_content_stream.side_effect = Exception("Stream Error")
         
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
                 chunks = list(service.translate_text_stream("Hello"))
                 self.assertIn("[Hata: Stream Error]", chunks[0])
 
     @patch('google.genai.Client')
-    def test_humanize_text_stream_error(self, MockClient):
+    def test_refine_text_stream_error(self, MockClient):
         mock_client_instance = MockClient.return_value
-        mock_client_instance.models.generate_content_stream.side_effect = Exception("Humanize Error")
+        mock_client_instance.models.generate_content_stream.side_effect = Exception("Refine Error")
         
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
-                chunks = list(service.humanize_text_stream("source", "current"))
-                self.assertIn("[Error: Humanize Error]", chunks[0])
+                chunks = list(service.refine_text_stream("source", "current"))
+                self.assertIn("[Error: Refine Error]", chunks[0])
 
-    def test_humanize_text_stream_empty(self):
+    def test_refine_text_stream_empty(self):
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
-                chunks = list(service.humanize_text_stream("", ""))
+                chunks = list(service.refine_text_stream("", ""))
                 self.assertEqual(len(chunks), 0)
 
     @patch('google.genai.Client')
-    def test_humanize_text_stream_success(self, MockClient):
+    def test_refine_text_stream_success(self, MockClient):
         mock_client_instance = MockClient.return_value
         mock_chunk = MagicMock()
-        mock_chunk.text = "Humanized"
+        mock_chunk.text = "Refined"
         mock_client_instance.models.generate_content_stream.return_value = iter([mock_chunk])
         
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
-                chunks = list(service.humanize_text_stream("source", "current"))
-                self.assertEqual("".join(chunks), "Humanized")
+                chunks = list(service.refine_text_stream("source", "current"))
+                self.assertEqual("".join(chunks), "Refined")
+
+                kwargs = mock_client_instance.models.generate_content_stream.call_args.kwargs
+                self.assertEqual(
+                    kwargs["contents"],
+                    "<source_text>\nsource\n</source_text>\n\n<current_text>\ncurrent\n</current_text>"
+                )
+                self.assertEqual(kwargs["config"].system_instruction, REFINE_SYSTEM_PROMPT)
 
     @patch('google.genai.Client')
     def test_translate_image_stream_success(self, MockClient):
@@ -97,37 +99,10 @@ class TestAPIServiceAdvanced(unittest.TestCase):
         mock_client_instance.models.generate_content_stream.return_value = iter([mock_chunk])
         
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
                 chunks = list(service.translate_image_stream(b"fake_image_bytes"))
                 self.assertEqual("".join(chunks), "Extracted")
-
-    @patch('google.genai.Client')
-    @patch('core.api_service.time.sleep')
-    def test_heartbeat_loop_execution(self, mock_sleep, MockClient):
-        # We want to test that the heartbeat actually calls the API
-        mock_client_instance = MockClient.return_value
-        
-        # Make sleep raise exception after 1 call to break the 'while True' loop
-        mock_sleep.side_effect = [5, 45, StopIteration("Break Loop")] 
-        
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'):
-                try:
-                    service = APIService()
-                    # Wait a bit for the thread
-                    import time
-                    time.sleep(0.5)
-                except StopIteration:
-                    pass # Loop broken as expected
-                
-                # Check if generate_content was called (the heartbeat call)
-                # It might not have happened yet if the thread is slow, 
-                # but with time.sleep(0.5) it should.
-                # Actually, the thread runs independently.
-                # Let's verify calls
-                mock_client_instance.models.generate_content.assert_called()
 
     @patch('google.genai.Client')
     def test_translate_image_stream_error(self, MockClient):
@@ -135,16 +110,14 @@ class TestAPIServiceAdvanced(unittest.TestCase):
         mock_client_instance.models.generate_content_stream.side_effect = Exception("Image Error")
         
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
                 chunks = list(service.translate_image_stream(b"fake_image_bytes"))
                 self.assertIn("[Hata: Image Error]", chunks[0])
 
     def test_translate_image_stream_empty(self):
          with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            with patch('core.api_service.APIService.warmup'), \
-                 patch('core.api_service.APIService._start_heartbeat'):
+            with patch('core.api_service.APIService.warmup'):
                 service = APIService()
                 chunks = list(service.translate_image_stream(None))
                 self.assertEqual(len(chunks), 0)
